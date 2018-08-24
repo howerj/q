@@ -31,15 +31,13 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <string.h>
-/* NB. No 'FILE*' or used in the library, only the sscanf/sprint functions 
- * (unless TEST is defined) */
+/* NB. No 'FILE*' or used in the library, only the sscanf/sprint functions. */
 #include <stdio.h>   
 
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 
-/* internal types: h = half size of u_t */
-typedef uint16_t hu_t;
-typedef  int16_t hd_t;
+typedef uint16_t hu_t; /* half width unsigned */
+typedef  int16_t hd_t; /* half width   signed */
 
 #define BITS  (16)
 #define MASK  ((1ULL << BITS) - 1ULL)
@@ -52,21 +50,6 @@ typedef  int16_t hd_t;
 #define LDMIN (INT64_MIN)
 #define LDMAX (INT64_MAX)
 
-/* The 'q_t' structure contains our fixed point format number. It should
- * be possible to 
- *
- * A possible modification to this structure would be to carry around a
- * structure to function pointers and information (such as format, minimum
- * and maximum values, ...) that would allow you to create fixed width
- * numbers with a user specified behavior and format. This however would
- * slow things down, complicate the library (although not the interface),
- * and double the size of the structure, which at the moment should fit
- * into a single register on a 32-bit platform. This would be very little
- * gain and more loss for something that will mostly likely be used on an 
- * embedded system, which will often involve customizing the library for
- * the platform anyway */
-
-/** The 'qinfo' structure holds */
 const qinfo_t qinfo = {
 	.behavior   = QBEHAVE_SATURATE_E, /**@todo Remove? Use callback instead? */
 	.whole      = BITS,
@@ -78,16 +61,17 @@ const qinfo_t qinfo = {
 	.max  = { .u = (HIGH << BITS) - 1 },
 
 	/**@warning these constants are dependent on the bit width due to how they are defined */
-	.pi   = { .u = 0x3243F /* 3.243F6 A8885 A308D 31319 8A2E0... */},
+	.pi    = { .u = 0x3243F /* 3.243F6 A8885 A308D 31319 8A2E0... */},
+	.e     = { .u = 0x2B7E1 /* 2.B7E1 5162 8A... */ },
+	.sqrt2 = { .u = 0x16a09 /* 1.6A09 E667 F3... */ },
+	.sqrt3 = { .u = 0x1BB67 /* 1.BB67 AE85 84... */ },
+	.ln2   = { .u = 0x0B172 /* 0.B172 17F7 D1... */ },
+	.ln10  = { .u = 0x24d76 /* 2.4D76 3776 AA... */ },
 };
 
-
-/** As a compromise, the behavior of the system can only be controlled
- * at a global level */
-
-qconf_t qconf = {
+qconf_t qconf = { /**@warning global configuration options */
 	.bound = qbound_saturate,
-	.dp = -1,
+	.dp    = 5,
 };
 
 d_t qbound_saturate(ld_t s) { /**< default saturation handler */
@@ -129,7 +113,7 @@ q_t qtrunc(q_t q) {
 	return (q_t){ .u = q.u & (MASK << BITS) }; 
 } 
 
-q_t qmk(int integer, unsigned fractional) { /**@bug still wrong, but better than qcons */
+q_t qmk(int integer, unsigned fractional) {
 	const int negative = integer < 0;
 	integer = negative ? -integer : integer;
 	const q_t r = qcons((d_t)integer, fractional);
@@ -203,23 +187,29 @@ int qnconv(q_t *q, char *s, size_t length) {
 	assert(q);
 	assert(s);
 	int r = 0;
-	long ld = 0;
+	long ld = 0, base = 10;
 	char frac[BITS+1] = { 0 };
 	memset(q, 0, sizeof *q);
+	/**@todo replace scanf, and snprintf with own number conversion functions */
 	(void)length; /* snscanf? */
 	if(sscanf(s, "%ld.%16s", &ld, frac) != 2)
 		return -1;
-	d_t hi = ld;
-	u_t lo = 0;
 	if(ld > DMAX || ld < DMIN)
 		r = -ERANGE;
-	for(size_t i = 0; frac[i]; i++) {
+	d_t hi = ld;
+	u_t lo = 0, i = 0, j = 1;
+	for(i = 0; frac[i]; i++) {
+		/* NB. Could eek out more precision by rounding next digit */
+		if(i > 5) /*max 5 decimal digits in a 16-bit number: trunc((ln(MAX-VAL+1)/ln(base)) + 1) */
+			break;
 		const int ch = frac[i] - '0';
 		if(ch < 0)
 			return -1;
-		/**@todo implement this */
+		lo = (lo * base) + ch;
+		j *= base;
 	}
-	*q = qcons(hi, lo);
+	lo = ((lo << BITS) / j);
+	*q = qmk(hi, lo);
 	return r;
 }
 

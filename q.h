@@ -27,6 +27,11 @@ typedef struct {
 	      bit,       /**< smallest 'q' number representable  */
 	      one,       /**< the constant '1' */
 	      pi,        /**< the constant 'pi' */
+	      e,         /**< the constant 'e' */
+	      sqrt2,     /**< the square root of 2 */
+	      sqrt3,     /**< the square root of 3 */
+	      ln2,       /**< the natural logarithm of 2 */
+	      ln10,      /**< the natural logarithm of 10 */
 	      min,       /**< most negative 'q' number */
 	      max;       /**< most positive 'q' number */
 	qbehave_e behavior;

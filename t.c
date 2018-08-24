@@ -45,7 +45,7 @@ static const function_t *lookup(char *op) {
 	return NULL;
 }
 
-int qprint(FILE *out, q_t p) {
+static int qprint(FILE *out, q_t p) {
 	assert(out);
 	char buf[64+1] = { 0 }; /**@todo find out max length */
 	const int r = qsprint(p, buf, sizeof buf);
@@ -95,6 +95,19 @@ static void printq(FILE *out, q_t q, const char *msg) {
 	fputc('\n', out);
 }
 
+static void qinfo_print(FILE *out, const qinfo_t *qi) {
+	printq(out, qi->bit,   "bit");
+	printq(out, qi->one,   "one");
+	printq(out, qi->zero,  "zero");
+	printq(out, qi->pi,    "pi");
+	printq(out, qi->e,     "e");
+	printq(out, qi->sqrt2, "sqrt2");
+	printq(out, qi->sqrt3, "sqrt3");
+	printq(out, qi->ln2,   "ln2");
+	printq(out, qi->ln10,  "ln10");
+	printq(out, qi->min,   "min");
+	printq(out, qi->max,   "max");
+}
 
 int main(void) {
 	/**@todo more static assertions relating to min/max numbers, BITS and
@@ -103,7 +116,7 @@ int main(void) {
 	 * asserted as being correct */
 
 	FILE *out = stdout;
-	q_t p1 = qmk( 3, qinfo.fractional );
+	q_t p1 = qmk( 3, HIGH/5 );
        	q_t p2 = qmk(-3, HIGH/5);
 	q_t p3 = qint(2);
 	test_duo(out, "+", p1, p2); /**@todo replace '+' with lookup based on function name */
@@ -135,12 +148,7 @@ int main(void) {
 	test_comp(out, "<", p2, p1);
 	test_comp(out, "<", p1, p1);
 
-	printq(out, qinfo.bit,  "bit");
-	printq(out, qinfo.one,  "one");
-	printq(out, qinfo.zero, "zero");
-	printq(out, qinfo.pi,   "pi");
-	printq(out, qinfo.min,  "min");
-	printq(out, qinfo.max,  "max");
+	qinfo_print(out, &qinfo);
 
 	test_duo(out, "+", qinfo.max, qinfo.one);
 	test_duo(out, "+", qinfo.max, qinfo.max);
@@ -148,12 +156,12 @@ int main(void) {
 
 	/**@todo test different saturation handlers */
 
+	test_duo(out, "/", qmk(2, (2*HIGH)/3), qmk(0, HIGH));
 	q_t conv = qinfo.zero;
-	qconv(&conv, "-12.34"); /**@todo fix this */
+	qconv(&conv, "-12.06250");
 	qprint(out, conv);
 	fputc('\n', out);
 
-	test_duo(out, "/", qmk(2, (2*HIGH)/3), qmk(0, HIGH));
 
 	/**@todo interactive calculator */
 

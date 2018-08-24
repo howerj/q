@@ -1,4 +1,4 @@
-CFLAGS=-std=c99 -Wall -Wextra -DTEST
+CFLAGS=-std=c99 -Wall -Wextra -O2 -DTEST
 TARGET=q
 
 .PHONY: all run clean
