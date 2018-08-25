@@ -95,6 +95,18 @@ static void printq(FILE *out, q_t q, const char *msg) {
 	fputc('\n', out);
 }
 
+static void printsc(FILE *out, q_t theta) {
+	q_t sine  = qinfo.zero, cosine = qinfo.zero;
+	qcordic(theta, 16, &sine, &cosine);
+	fprintf(out, "t(");
+	qprint(out, theta);
+	fprintf(out, ") s(");
+	qprint(out, sine);
+	fprintf(out, ") c(");
+	qprint(out, cosine);
+	fprintf(out, ")\n");
+}
+
 static void qinfo_print(FILE *out, const qinfo_t *qi) {
 	printq(out, qi->bit,   "bit");
 	printq(out, qi->one,   "one");
@@ -158,9 +170,18 @@ int main(void) {
 
 	test_duo(out, "/", qmk(2, (2*HIGH)/3), qmk(0, HIGH));
 	q_t conv = qinfo.zero;
-	qconv(&conv, "-12.06250");
+	qconv(&conv, "-12.06259");
 	qprint(out, conv);
 	fputc('\n', out);
+
+	q_t tpi = qdiv(qinfo.pi, qint(20));
+	for(q_t i = qnegate(qinfo.pi); qless(i, qinfo.pi); i = qadd(i, tpi)) {
+		printsc(out, i);
+	}
+
+	q_t theta = qinfo.zero;
+	q_t sine  = qinfo.zero, cosine = qinfo.zero;
+	qcordic(theta, 16, &sine, &cosine);
 
 
 	/**@todo interactive calculator */

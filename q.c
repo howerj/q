@@ -30,6 +30,7 @@
 #include <errno.h>
 #include <ctype.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <string.h>
 /* NB. No 'FILE*' or used in the library, only the sscanf/sprint functions. */
 #include <stdio.h>   
@@ -217,4 +218,99 @@ int qconv(q_t *q, char *s) {
 	assert(s);
 	return qnconv(q, s, strlen(s));
 }
+
+static inline int32_t arshift(int32_t v, unsigned p) {
+	uint32_t vn = v;
+	if(v >= 0)
+		return vn >> p;
+	const uint32_t mask = ((uint32_t)(-1L)) << ((sizeof(v)*CHAR_BIT) - p);
+	return mask | (vn >> p);
+}
+
+int qcordic(q_t theta, unsigned iterations, q_t *sine, q_t *cosine) {
+	assert(sine);
+	assert(cosine);
+	static const uint32_t lookup[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
+		0x3243, 0x1DAC, 0x0FAD, 0x07F5, 
+		0x03FE, 0x01FF, 0x00FF, 0x007F, 
+		0x003F, 0x001F, 0x000F, 0x0007, 
+		0x0003, 0x0001, 0x0000, 0x0000,
+	};
+	const size_t n = sizeof lookup / sizeof lookup[0];
+	const int32_t iscaling = 0x26DD; /* 1/scaling-factor */
+	iterations     = iterations > n ? n : iterations;
+	*sine          = qinfo.zero;
+	*cosine        = qinfo.zero;
+
+	const q_t   pi = qinfo.pi;
+	const q_t  npi = qnegate(qinfo.pi);
+	const q_t  qpi = qdiv(pi, qint(4)); 
+	const q_t qnpi = qnegate(qpi);
+	const q_t  dpi = qmul(pi, qint(2)); 
+	const q_t dnpi = qnegate(dpi);
+
+	int negate = 0, shift = 0;
+
+	/* convert to range -pi   to pi */
+	while(qless(theta, npi)) theta = qadd(theta,  dpi);
+	while(qmore(theta,  pi)) theta = qadd(theta, dnpi);
+
+	/* convert to range -pi/2 to pi/2 */
+	const q_t  hpi = qdiv(pi, qint(2)); 
+	const q_t hnpi = qnegate(hpi);
+	if(qless(theta, hnpi)) {
+		theta = qadd(theta,  pi);
+		negate = 1;
+	} else if(qmore(theta, hpi)) {
+		theta = qadd(theta, npi);
+		negate = 1;
+	}
+
+	/* convert to range -pi/4 to pi/4 */
+	if(qless(theta, qnpi)) {
+		theta = qadd(theta,  hpi);
+		shift = -1;
+	} else if(qmore(theta, qpi)) {
+		theta = qadd(theta, hnpi);
+		shift =  1;
+	} 
+
+	/* convert to internal scaling for CORDIC routine (not q16.16!) */
+
+	/**@todo better scaling */
+	int32_t x = iscaling, y = 0, z = theta.d >> 2;
+
+	for(size_t i = 0; i < iterations; i++) {
+		const int32_t  d =   -!!(z < 0);
+		const int32_t xn = x - ((arshift(y, i) ^ d) - d);
+		const int32_t yn = y + ((arshift(x, i) ^ d) - d);
+		const int32_t zn = z - ((lookup[i] ^ d) - d);
+		x = xn; /* cosine */
+		y = yn; /* sine   */
+		z = zn;
+	}
+	/* correct overflow in cosine */
+	//if(x < 0) x = -x;
+	/* shift */
+	if(shift > 0) {
+		const int32_t yt = y;
+		y =  x;
+		x = -yt;
+	} else if(shift < 0) {
+		const int32_t yt = y;
+		y = -x;
+		x =  yt;
+	} 
+	/* quadrant */
+	if(negate) {
+		x = -x;
+		y = -y;
+	}
+	/* rescale and set output */
+	/* @todo better scaling */
+	cosine->d = x << 2;
+	  sine->d = y << 2;
+	return 0;
+}
+
 

@@ -71,6 +71,7 @@ q_t qtrunc(q_t q);
 int qsprint(q_t p, char *s, size_t length);
 int qnconv(q_t *q, char *s, size_t length);
 int qconv(q_t *q, char *s);
+int qcordic(q_t theta, unsigned iterations, q_t *sine, q_t *cosine);
 
 
 #endif
