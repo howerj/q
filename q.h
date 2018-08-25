@@ -1,28 +1,22 @@
+/**@file q.h
+ * @brief Q-Number (Q16.16, signed) library
+ * @copyright Richard James Howe (2018)
+ * @license MIT
+ * @email howe.r.j.89@gmail.com
+ * @site <https://github.com/howerj/q> */
+
 #ifndef Q_H
 #define Q_H
 
 #include <stdint.h>
 #include <stddef.h>
 
-typedef uint32_t  u_t;
-typedef  int32_t  d_t;
-typedef uint64_t lu_t;
-typedef  int64_t ld_t;
-
-typedef struct {
-	union { u_t u; d_t d; };
-} q_t;
-
-typedef enum {
-	QBEHAVE_SATURATE_E,   /**< saturating arithmetic (default) */
-	QBEHAVE_MODULO_E,     /**< modulo arithmetic */
-	QBEHAVE_EXCEPTION_E,  /**< exception */
-} qbehave_e; /**< high level q behavior, what happens on over/under flow? */
+typedef int32_t q_t;  /**< Q Fixed Point Number, (Q16.16, Signed) */
+typedef int64_t ld_t; /**< */
 
 typedef struct {
 	size_t whole,      /**< number of bits for whole, or integer, part of Q number */
 	       fractional; /**< number of bits for fractional part of Q number */
-	/**@todo add more constants: from <http://www.numberworld.org/constants.html>  */
 	const q_t zero,  /**< the constant '0' */
 	      bit,       /**< smallest 'q' number representable  */
 	      one,       /**< the constant '1' */
@@ -34,21 +28,21 @@ typedef struct {
 	      ln10,      /**< the natural logarithm of 10 */
 	      min,       /**< most negative 'q' number */
 	      max;       /**< most positive 'q' number */
-	qbehave_e behavior;
 	/**@todo document type of division, rounding behavior, etcetera */
-} qinfo_t; 
+} qinfo_t;
 
-typedef d_t (*qbounds_t)(ld_t s);
+typedef q_t (*qbounds_t)(ld_t s);
 
-d_t qbound_saturate(ld_t s);
+q_t qbound_saturate(ld_t s); /**< default over/underflow behavior, saturation */
+q_t qbound_wrap(ld_t s);     /**< over/underflow behavior, wrap around */
 
 typedef struct {
 	qbounds_t bound; /**< handles saturation when a number over or underflows */
 	int dp;          /**< decimal points to print, negative specifies maximum precision will allow */
-} qconf_t; /**< global Q format configuration options */
+} qconf_t; /**< Q format configuration options */
 
-extern const qinfo_t qinfo;
-extern qconf_t qconf;
+extern const qinfo_t qinfo; /**< information about the format and constants */
+extern qconf_t qconf;       /**< @warning GLOBAL Q configuration options */
 
 int qnegative(q_t a);
 int qless(q_t a, q_t b);
@@ -71,7 +65,9 @@ q_t qtrunc(q_t q);
 int qsprint(q_t p, char *s, size_t length);
 int qnconv(q_t *q, char *s, size_t length);
 int qconv(q_t *q, char *s);
-int qcordic(q_t theta, unsigned iterations, q_t *sine, q_t *cosine);
-
+int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine);
+void qsincos(q_t theta, q_t *sine, q_t *cosine);
+q_t qsin(q_t theta);
+q_t qcos(q_t theta);
 
 #endif

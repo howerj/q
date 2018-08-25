@@ -5,8 +5,8 @@ TARGET=q
 
 all: ${TARGET}
 
-run: ${TARGET}
-	./${TARGET}
+run: ${TARGET} t.q
+	./${TARGET} t.q
 
 ${TARGET}: *.c
 
