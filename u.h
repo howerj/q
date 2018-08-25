@@ -56,13 +56,14 @@ static inline void _unit_test(int failed, const char *expr_str, const char *file
 	unit_tests_run++;
 }
 
-static inline void unit_test_finish(void) {
+static inline int unit_test_finish(void) {
 	fprintf(UNIT_TEST_OUTPUT, "Tests passed/total: %u/%u\n", unit_tests_passed, unit_tests_run);
 	if(unit_tests_run != unit_tests_passed) {
 		fprintf(UNIT_TEST_OUTPUT, "[%sFAILED%s]\n", _unit_red(), _unit_ansi_reset());
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 	fprintf(UNIT_TEST_OUTPUT, "[%sSUCCESS%s]\n", _unit_green(), _unit_ansi_reset());
+	return 0;
 }
 
 #define unit_test_statement(EXPR) do { EXPR; _unit_test_statement( ( # EXPR ) ); } while(0)

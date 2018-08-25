@@ -44,10 +44,19 @@ typedef struct {
 extern const qinfo_t qinfo; /**< information about the format and constants */
 extern qconf_t qconf;       /**< @warning GLOBAL Q configuration options */
 
-int qnegative(q_t a);
+int qisnegative(q_t a);
+int qispositive(q_t a);
+int qisinteger(q_t a);
+int qisodd(q_t a);
+int qiseven(q_t a);
+
 int qless(q_t a, q_t b);
 int qmore(q_t a, q_t b);
+int qeqless(q_t a, q_t b);
+int qeqmore(q_t a, q_t b);
 int qequal(q_t a, q_t b);
+int qunequal(q_t a, q_t b);
+
 int qtoi(q_t toi);
 q_t qint(int toq);
 q_t qnegate(q_t a);
@@ -59,6 +68,7 @@ q_t qadd(q_t a, q_t b);
 q_t qsub(q_t a, q_t b);
 q_t qmul(q_t a, q_t b);
 q_t qdiv(q_t a, q_t b);
+q_t qrem(q_t a, q_t b);
 q_t qround(q_t q);
 q_t qtrunc(q_t q);
 

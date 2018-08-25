@@ -1,4 +1,5 @@
 #include "q.h"
+#include "u.h"
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -11,11 +12,13 @@
 #define N    (16)
 
 typedef q_t (*function_unary_arith_t)(q_t a);
+typedef int (*function_unary_propery_t)(q_t a);
 typedef q_t (*function_binary_arith_t)(q_t a, q_t b);
 typedef int (*function_binary_compare_t)(q_t a, q_t b);
 
 typedef enum {
 	FUNCTION_UNARY_ARITHMETIC_E,
+	FUNCTION_UNARY_PROPERY_E,
 	FUNCTION_BINARY_ARITHMETIC_E,
 	FUNCTION_BINARY_COMPARISON_E,
 } function_e;
@@ -23,7 +26,12 @@ typedef enum {
 typedef struct {
 	function_e type;
 	int arity;
-	union { function_binary_arith_t f; function_binary_compare_t c; function_unary_arith_t m; } op;
+	union { 
+		function_binary_arith_t f; 
+		function_binary_compare_t c; 
+		function_unary_arith_t m; 
+		function_unary_propery_t p;
+	} op;
 	char *name;
 } function_t;
 
@@ -34,17 +42,37 @@ static const function_t *lookup(char *op) {
 		{ .op.f = qsub,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "-" },
 		{ .op.f = qmul,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "*" },
 		{ .op.f = qdiv,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "/" },
+		{ .op.f = qrem,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "rem" },
 		{ .op.f = qmin,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "min" },
 		{ .op.f = qmax,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "max" },
+
 		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
 		{ .op.m = qround,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "round" },
 		{ .op.m = qabs,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
 		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
+
+		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
+		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
+		{ .op.m = qround,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "round" },
+		{ .op.m = qabs,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
+		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
+		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
+
+		{ .op.p = qisinteger,  .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "int?" },
+		{ .op.p = qisnegative, .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "neg?" },
+		{ .op.p = qispositive, .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "pos?" },
+		{ .op.p = qisodd,      .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "odd?" },
+		{ .op.p = qiseven,     .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "even?" },
+
 		{ .op.c = qmore,   .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = ">" },
 		{ .op.c = qless,   .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "<" },
 		{ .op.c = qequal,  .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "=" },
+		{ .op.c = qeqmore, .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = ">=" },
+		{ .op.c = qeqless, .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "<=" },
+		{ .op.c = qunequal,.arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "<>" },
+
 	};
 	const size_t length = sizeof(functions) / sizeof(functions[0]);
 	for(size_t i = 0; i < length; i++) {
@@ -110,7 +138,7 @@ static FILE *fopen_or_die(const char *file, const char *mode) {
 	FILE *h = NULL;
 	errno = 0;
 	if(!(h = fopen(file, mode))) {
-		fprintf(stderr, "file open %s (mode %s) failed: %s", file, mode, strerror(errno));
+		fprintf(stderr, "file open \"%s\" (mode %s) failed: %s\n", file, mode, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 	return h;
@@ -155,6 +183,16 @@ static int qwithin_bounds(q_t v, q_t expected, q_t allowance) {
 	const q_t b1 = qadd(expected, allowance);
 	const q_t b2 = qsub(expected, allowance);
 	return qwithin(v, b1, b2);
+}
+
+static int eval_unary_property(function_unary_propery_t p, q_t expected, q_t bound, q_t arg1, q_t *result) {
+	assert(p);
+	assert(result);
+	const int r = p(arg1);
+	*result = qint(r);
+	if(qwithin_bounds(qint(r), expected, bound))
+		return 0;
+	return -1;
 }
 
 static int eval_unary_arith(function_unary_arith_t m, q_t expected, q_t bound, q_t arg1, q_t *result) {
@@ -210,6 +248,10 @@ static int eval(char *line, q_t *result) {
 	if(qconv(&a1, arg1) < 0)
 		return -EVAL_ERROR_CONVERT_E;
 	switch(func->type) {
+	case FUNCTION_UNARY_PROPERY_E:
+		if(eval_unary_property(func->op.p, e, b, a1, result) < 0)
+			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
+		break;
 	case FUNCTION_UNARY_ARITHMETIC_E:
 		if(eval_unary_arith(func->op.m, e, b, a1, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
@@ -266,15 +308,51 @@ static int eval_file(FILE *input, FILE *output) {
 	return 0;
 }
 
+static int internal_tests(void) {
+	unit_test_start();
+
+	q_t t1 = 0, t2 = 0;
+	unit_test_statement(t1 = qint(1));
+	unit_test_statement(t2 = qint(2));
+	unit_test(qtoi(qadd(t1, t2)) == 3);
+
+	return unit_test_finish();
+}
+
 static void help(FILE *out, const char *arg0) {
 	const char *h = "\n\
 Program: Q-Number (Q16.16, signed) library testbench\n\
 Author:  Richard James Howe (2018)\n\
 License: MIT\n\
 E-mail:  howe.r.j.89@gmail.com\n\
-Site:    https://github.com/howerj/q\n\
+Site:    https://github.com/howerj/q\n\n\
+Options:\n\
+\t-s\tprint a sine-cosine table\n\
+\t-h\tprint this help message and exit\n\
+\t-i\tprint library information\n\
+\t-t\trun internal unit tests\n\
+\t-c\tturn color on for unit tests\n\
+\t-v\tprint version information and exit\n\
+\tfile\texecute commands in file\n\n\
+This program wraps up a Q-Number library and allows it to be tested by\n\
+giving it commands, either from stdin, or from a file. The format is\n\
+strict and the parser primitive, but it is only meant to be used to\n\
+test that the library is doing the correct thing and not as a\n\
+calculator.\n\n\
+Commands evaluated consist of an operator with the require arguments\n\
+(either one or two arguments) and compare the result with an expected\n\
+value, which can within a specified bounds for the test to pass. If\n\
+the test fails the program exits, indicating failure. The format is:\n\
+\n\
+\toperator expected +- allowance | arg1 arg2\n\n\
+operators include '+', '-', '/', 'rem', '<', which require two\n\
+arguments, and unary operators like 'sin', and 'negate', which require\n\
+only one. 'expected', 'allowance', 'arg1' and 'arg2' are all fixed\n\
+numbers of the form '-12.45'. 'expected' is the expected result,\n\
+'allowance' the +/- amount the result is allowed to deviated by, and\n\
+'arg1' and 'arg2' the operator arguments.\n\
 \n\n";
-	fprintf(out, "usage: %s -h -s -i file\n", arg0);
+	fprintf(out, "usage: %s -h -s -i -v -t -c file\n", arg0);
 	fputs(h, out);
 }
 
@@ -286,6 +364,15 @@ int main(int argc, char **argv) {
 			return 0;
 		} else if(!strcmp("-s", argv[i])) {
 			print_sincos_table(stdout);
+			ran = true;
+		} else if(!strcmp("-v", argv[i])) {
+			fprintf(stdout, "version 1.0\n");
+			return 0;
+		} else if(!strcmp("-c", argv[i])) {
+			unit_color_on = true;
+		} else if(!strcmp("-t", argv[i])) {
+			if(internal_tests() < 0)
+				return -1;
 			ran = true;
 		} else if(!strcmp("-i", argv[i])) {
 			qinfo_print(stdout, &qinfo);
@@ -305,16 +392,6 @@ int main(int argc, char **argv) {
 	return 0;
 
 	/*
-	const q_t tpi   = qdiv(qinfo.pi, qint(20));
-	const q_t start = qmul(qinfo.pi, qint(2));
-	for(q_t i = qnegate(start); qless(i, start); i = qadd(i, tpi)) {
-		printsc(out, i);
-	}
-
-	q_t theta = qinfo.zero;
-	q_t sine  = qinfo.zero, cosine = qinfo.zero;
-	qcordic(theta, 16, &sine, &cosine);
-
 	qconf.bound = qbound_wrap;
 	test_duo(out, "+", qinfo.max, qinfo.one);
 	test_duo(out, "+", qinfo.max, qinfo.max);

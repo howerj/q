@@ -18,6 +18,8 @@
  * 	- <https://en.wikipedia.org/wiki/Q_%28number_format%29>
  * 	- <https://www.mathworks.com/help/fixedpoint/examples/calculate-fixed-point-sine-and-cosine.html>
  * 	- <http://www.coranac.com/2009/07/sines/>
+ * 	- <https://stackoverflow.com/questions/4657468/fast-fixed-point-pow-log-exp-and-sqrt>
+ * 	- <https://en.wikipedia.org/wiki/Modulo_operation>
  *
  * For a Q8.8 library it would be quite possible to do an exhaustive
  * proof of correctness over most expected properties.
@@ -121,21 +123,28 @@ static inline u_t qhigh(const q_t q) { return ((u_t)q) >> BITS; }
 static inline u_t qlow(const q_t q)  { return ((u_t)q) & MASK; }
 static inline q_t qcons(const u_t hi, const u_t lo) { return (hi << BITS) | (lo & MASK); }
 
-int qnegative(q_t a)     { return !!(qhigh(a) & HIGH); }
-int qless(q_t a, q_t b)  { return a < b; }
-int qmore(q_t a, q_t b)  { return a > b; }
-int qequal(q_t a, q_t b) { return a == b; }
-int qtoi(q_t toi)        { return ((u_t)toi) >> BITS; /**@bug sizeof(int) > sizeof(q_t) */ }
-q_t qint(int toq)        { return ((u_t)((d_t)toq)) << BITS; }
-q_t qnegate(q_t a)       { return (~(u_t)a) + 1ULL; }
-q_t qmin(q_t a, q_t b)   { return qless(a, b) ? a : b; }
-q_t qmax(q_t a, q_t b)   { return qmore(a, b) ? a : b; }
-q_t qabs(q_t a)          { return qnegative(a) ? qnegate(a) : a; }
-q_t qadd(q_t a, q_t b)   { return qsat((ld_t)a + (ld_t)b); }
-q_t qsub(q_t a, q_t b)   { return qsat((ld_t)a - (ld_t)b); }
+int qisnegative(q_t a)     { return !!(qhigh(a) & HIGH); }
+int qispositive(q_t a)     { return  !(qhigh(a) & HIGH); }
+int qisinteger(q_t a)      { return  !qlow(a); }
+int qisodd(q_t a)          { return qisinteger(a) &&  (qhigh(a) & 1); }
+int qiseven(q_t a)         { return qisinteger(a) && !(qhigh(a) & 1); }
+int qless(q_t a, q_t b)    { return a < b; }
+int qeqless(q_t a, q_t b)  { return a <= b; }
+int qmore(q_t a, q_t b)    { return a > b; }
+int qeqmore(q_t a, q_t b)  { return a >= b; }
+int qequal(q_t a, q_t b)   { return a == b; }
+int qunequal(q_t a, q_t b) { return a != b; }
+int qtoi(q_t toi)          { return ((u_t)toi) >> BITS; /**@bug sizeof(int) > sizeof(q_t) */ }
+q_t qint(int toq)          { return ((u_t)((d_t)toq)) << BITS; }
+q_t qnegate(q_t a)         { return (~(u_t)a) + 1ULL; }
+q_t qmin(q_t a, q_t b)     { return qless(a, b) ? a : b; }
+q_t qmax(q_t a, q_t b)     { return qmore(a, b) ? a : b; }
+q_t qabs(q_t a)            { return qisnegative(a) ? qnegate(a) : a; }
+q_t qadd(q_t a, q_t b)     { return qsat((ld_t)a + (ld_t)b); }
+q_t qsub(q_t a, q_t b)     { return qsat((ld_t)a - (ld_t)b); }
 
 q_t qtrunc(q_t q) {
-	const q_t adj = qnegative(q) && qlow(q) ? qinfo.one : qinfo.zero;
+	const q_t adj = qisnegative(q) && qlow(q) ? qinfo.one : qinfo.zero;
 	q = qadd(q, adj);
 	return ((u_t)q) & (MASK << BITS);
 }
@@ -165,6 +174,12 @@ q_t qdiv(q_t a, q_t b) {
 	return dd / b;
 }
 
+q_t qrem(q_t a, q_t b)
+{
+	const q_t div = qdiv(a, b);
+	return qsub(a, qmul(qtrunc(div), b));
+}
+
 /*q_t qfloor(q_t q)
 {
 }
@@ -177,13 +192,10 @@ q_t qmod(q_t a, q_t b)
 {
 }
 
-q_t qremainder(q_t a, q_t b)
-{
-}
 */
 
 q_t qround(q_t q) {
-	const int negative = qnegative(q);
+	const int negative = qisnegative(q);
 	const int round    = !!( qlow(q) & HIGH);
 	return qsat(((ld_t)q) + (negative ? -round : round));
 }
@@ -231,7 +243,7 @@ static int uprint(u_t p, char *s, size_t length, int base) {
 /* <https://codereview.stackexchange.com/questions/109212> */
 int qsprint(q_t p, char *s, size_t length) { /**@todo different bases, clean this up */
 	assert(s);
-	const int negative = qnegative(p);
+	const int negative = qisnegative(p);
 	if(negative)
 		p = qnegate(p);
 	const u_t base = 10;
@@ -353,16 +365,20 @@ int qnconv(q_t *q, char *s, size_t length) {
 	memset(q, 0, sizeof *q);
 	const char *endptr = NULL;
 	errno = 0;
-	hi = strntol(s, length, &endptr, base);
-	if(errno || endptr == s) /**@todo remove dependency on errno */
-		return -1;
-	if(!(*endptr))
-		goto end;
-	if(*endptr != '.')
-		return -1;
+	if(*s != '.') {
+		hi = strntol(s, length, &endptr, base);
+		if(errno || endptr == s) /**@todo remove dependency on errno */
+			return -1;
+		if(!(*endptr))
+			goto end;
+		if(*endptr != '.')
+			return -1;
+	} else {
+		endptr = s;
+	}
 	memcpy(frac, endptr + 1, MIN(sizeof(frac), length - (s - endptr)));
 	if(hi > DMAX || hi < DMIN)
-		r = -ERANGE;
+		return -1;
 	for(i = 0; frac[i]; i++) {
 		/* NB. Could eek out more precision by rounding next digit */
 		if(i > 5) /*max 5 decimal digits in a 16-bit number: trunc((ln(MAX-VAL+1)/ln(base)) + 1) */

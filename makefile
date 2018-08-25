@@ -1,4 +1,4 @@
-CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic
+CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic -fwrapv
 TARGET=q
 RM=rm -fv
 
