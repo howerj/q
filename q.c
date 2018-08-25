@@ -13,23 +13,24 @@
  * 	  - <https://rob.conery.io/2018/08/21/mod-and-remainder-are-not-the-same/>
  * 	- unit tests, built in ones
  * 	- optional conversion to floats (compile time switch)
- * 	- remove dependency on stdio entirely
+ * 	- remove dependency on errno.h entirely
  * NOTES:
  * 	- <https://en.wikipedia.org/wiki/Q_%28number_format%29>
  * 	- <https://www.mathworks.com/help/fixedpoint/examples/calculate-fixed-point-sine-and-cosine.html>
  * 	- <http://www.coranac.com/2009/07/sines/>
- * 	- <https://en.wikipedia.org/wiki/CORDIC>
- *	- */
+ *
+ * For a Q8.8 library it would be quite possible to do an exhaustive
+ * proof of correctness over most expected properties.
+ */
 
 #include "q.h"
+#include <stdbool.h>
 #include <assert.h>
 #include <errno.h>
 #include <ctype.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <string.h>
-/* NB. No 'FILE*' or used in the library, only the sscanf/sprint functions. */
-#include <stdio.h>
 
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 
@@ -49,6 +50,14 @@ typedef uint64_t lu_t; /* double Q width,  unsigned */
 #define LDMIN (INT64_MIN)
 #define LDMAX (INT64_MAX)
 
+#ifndef MIN
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#endif
+
+#ifndef MAX
+#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
+#endif
+
 const qinfo_t qinfo = {
 	.whole      = BITS,
 	.fractional = BITS,
@@ -61,10 +70,10 @@ const qinfo_t qinfo = {
 	/**@warning these constants are dependent on the bit width due to how they are defined */
 	.pi    = 0x3243FuL /* 3.243F6 A8885 A308D 31319 8A2E0... */,
 	.e     = 0x2B7E1uL /* 2.B7E1 5162 8A... */ ,
-	.sqrt2 = 0x16a09uL /* 1.6A09 E667 F3... */ ,
+	.sqrt2 = 0x16A09uL /* 1.6A09 E667 F3... */ ,
 	.sqrt3 = 0x1BB67uL /* 1.BB67 AE85 84... */ ,
 	.ln2   = 0x0B172uL /* 0.B172 17F7 D1... */ ,
-	.ln10  = 0x24d76uL /* 2.4D76 3776 AA... */ ,
+	.ln10  = 0x24D76uL /* 2.4D76 3776 AA... */ ,
 };
 
 qconf_t qconf = { /**@warning global configuration options */
@@ -179,46 +188,181 @@ q_t qround(q_t q) {
 	return qsat(((ld_t)q) + (negative ? -round : round));
 }
 
+static char itoch(unsigned ch) {
+	assert(ch < 36);
+	if(ch <= 9)
+		return ch + '0';
+	return ch + 'a';
+}
+
+static inline void swap(char *a, char *b) {
+	assert(a);
+	assert(b);
+	const int c = *a;
+	*a = *b;
+	*b = c;
+}
+
+static void reverse(char *s, size_t length) {
+	assert(s);
+	if(length <= 1)
+		return;
+	for(size_t i = 0; i < length/2; i++)
+		swap(&s[i], &s[length - i - 1]);
+}
+
+static int uprint(u_t p, char *s, size_t length, int base) {
+	assert(s);
+	assert(base >= 2 && base <= 36);
+	if(length < 2)
+		return -1;
+	size_t i = 0;
+	do {
+		unsigned ch = p % base;
+		p /= base;
+		s[i++] = itoch(ch);
+	} while(p && i < length);
+	if(p && i >= length)
+		return -1;
+	reverse(s, i);
+	return i;
+}
+
 /* <https://codereview.stackexchange.com/questions/109212> */
-int qsprint(q_t p, char *s, size_t length) { /**@todo different bases */
+int qsprint(q_t p, char *s, size_t length) { /**@todo different bases, clean this up */
 	assert(s);
 	const int negative = qnegative(p);
 	if(negative)
 		p = qnegate(p);
 	const u_t base = 10;
 	const d_t hi = qhigh(p);
-	char frac[BITS+1] = { 0 };
+	char frac[BITS+1] = { '.' };
+	memset(s, 0, length);
 	u_t lo = qlow(p);
-	for(size_t i = 0; lo; i++) {
+	size_t i = 1;
+	for(i = 1; lo; i++) {
 		if(qconf.dp >= 0 && (int)i >= qconf.dp) /**@todo proper rounding*/
 			break;
 		lo *= base;
 		frac[i] = '0' + (lo >> BITS);
 		lo &= MASK;
 	}
-	return snprintf(s, length, "%s%ld.%s", negative ? "-" : "", (long)hi, frac);
+	if(negative)
+		s[0] = '-';
+	const int hisz = uprint(hi, s + negative, length - 1, base);
+	if(hisz < 0 || (hisz + i + negative + 1) > length)
+		return -1;
+	memcpy(s + hisz + negative, frac, i);
+	return i + hisz;
+}
+
+static inline int extract(unsigned char c, int radix)
+{
+	c = tolower(c);
+	if(c >= '0' && c <= '9')
+		c -= '0';
+	else if(c >= 'a' && c <= 'z')
+		c -= ('a' - 10);
+	else
+		return -1;
+	if(c < radix)
+		return c;
+	return -1;
+}
+
+long int strntol(const char *str, size_t length, const char **endptr, int base)
+{
+	assert(str);
+	assert(endptr);
+	assert((base >= 2 && base <= 36) || !base);
+	size_t i = 0;
+	bool negate = false, overflow = false, error = false;
+	unsigned long radix = base, r = 0;
+
+	for(; i < length && str[i]; i++) /* ignore leading white space */
+		if(!isspace(str[i]))
+			break;
+	if(i >= length)
+		goto end;
+
+	if(str[i] == '-' || str[i] == '+') { /* Optional '+', and '-' for negative */
+		if(str[i] == '-')
+			negate = true;
+		i++;
+	}
+	if(i >= length) {
+		error = true;
+		goto end;
+	}
+
+	radix = base;
+	/* @bug 0 is a valid number, but is not '0x', set endptr and errno if
+	 * this happens */
+	if(!base || base == 16) { /* prefix 0 = octal, 0x or 0X = hex */
+		if(str[i] == '0') {
+			if(((i+1) < length) && (str[i + 1] == 'x' || str[i + 1] == 'X')) {
+				radix = 16;
+				i += 2;
+			} else {
+				radix = 8;
+				i++;
+			}
+		} else {
+			if(!base)
+				radix = 10;
+		}
+	}
+	if(i >= length)
+		goto end;
+
+	for(; i < length && str[i]; i++) {
+		int e = extract(str[i], radix);
+		if(e < 0)
+			break;
+		unsigned long a = e;
+		r = (r*radix) + a;
+		if(r > LONG_MAX) /* continue on with conversion */
+			overflow = true;
+	}
+end:
+	i = MIN(i, length);
+	*endptr = &str[i];
+	if(error)
+		*endptr = str;
+	if(overflow) { /* result out of range, set errno to indicate this */
+		errno = ERANGE;
+		r = LONG_MAX;
+		if(negate)
+			return LONG_MIN;
+	}
+	if(negate)
+		r = -r;
+	return r;
 }
 
 /**@bug all allowed formats are not implemented
- *
  * Allowed example numbers; 2.0 -3 +0x5.Af -0377.77 1 0
- *
- */
+ * @todo clean this all up, it's a giant mess */
 int qnconv(q_t *q, char *s, size_t length) {
 	assert(q);
 	assert(s);
 	int r = 0;
-	long ld = 0, base = 10;
+	u_t lo = 0, i = 0, j = 1;
+	long hi = 0, base = 10;
 	char frac[BITS+1] = { 0 };
 	memset(q, 0, sizeof *q);
-	/**@todo replace scanf, and snprintf with own number conversion functions */
-	(void)length; /* snscanf? */
-	if(sscanf(s, "%ld.%16s", &ld, frac) != 2)
+	const char *endptr = NULL;
+	errno = 0;
+	hi = strntol(s, length, &endptr, base);
+	if(errno || endptr == s) /**@todo remove dependency on errno */
 		return -1;
-	if(ld > DMAX || ld < DMIN)
+	if(!(*endptr))
+		goto end;
+	if(*endptr != '.')
+		return -1;
+	memcpy(frac, endptr + 1, MIN(sizeof(frac), length - (s - endptr)));
+	if(hi > DMAX || hi < DMIN)
 		r = -ERANGE;
-	d_t hi = ld;
-	u_t lo = 0, i = 0, j = 1;
 	for(i = 0; frac[i]; i++) {
 		/* NB. Could eek out more precision by rounding next digit */
 		if(i > 5) /*max 5 decimal digits in a 16-bit number: trunc((ln(MAX-VAL+1)/ln(base)) + 1) */
@@ -230,6 +374,7 @@ int qnconv(q_t *q, char *s, size_t length) {
 		j *= base;
 	}
 	lo = ((lo << BITS) / j);
+end:
 	*q = qmk(hi, lo);
 	return r;
 }
@@ -239,7 +384,8 @@ int qconv(q_t *q, char *s) {
 	return qnconv(q, s, strlen(s));
 }
 
-/* See: <https://dspguru.com/dsp/faqs/cordic/> */
+/* See: - <https://dspguru.com/dsp/faqs/cordic/>
+ *      - <https://en.wikipedia.org/wiki/CORDIC> */
 int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	assert(sine);
 	assert(cosine);

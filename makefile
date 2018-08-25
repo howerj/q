@@ -1,5 +1,6 @@
-CFLAGS=-std=c99 -Wall -Wextra -O2 -DTEST
+CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic
 TARGET=q
+RM=rm -fv
 
 .PHONY: all run clean
 
@@ -11,4 +12,4 @@ run: ${TARGET} t.q
 ${TARGET}: *.c
 
 clean:
-	rm -f ${TARGET}
+	${RM} ${TARGET}

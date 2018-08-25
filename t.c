@@ -1,17 +1,18 @@
 #include "q.h"
-#include <stdio.h>
 #include <assert.h>
-#include <string.h>
 #include <ctype.h>
-#include <stdlib.h>
 #include <errno.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define HIGH (1ULL << (qinfo.fractional - 1))
 #define N    (16)
 
-typedef q_t (*function_mono_arith_t)(q_t a);
-typedef q_t (*function_duo_arith_t)(q_t a, q_t b);
-typedef int (*function_duo_compare_t)(q_t a, q_t b);
+typedef q_t (*function_unary_arith_t)(q_t a);
+typedef q_t (*function_binary_arith_t)(q_t a, q_t b);
+typedef int (*function_binary_compare_t)(q_t a, q_t b);
 
 typedef enum {
 	FUNCTION_UNARY_ARITHMETIC_E,
@@ -22,28 +23,28 @@ typedef enum {
 typedef struct {
 	function_e type;
 	int arity;
-	union { function_duo_arith_t f; function_duo_compare_t c; function_mono_arith_t m; };
+	union { function_binary_arith_t f; function_binary_compare_t c; function_unary_arith_t m; } op;
 	char *name;
 } function_t;
 
 static const function_t *lookup(char *op) {
 	assert(op);
 	static const function_t functions[] = {
-		{ .f = qadd,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "+" },
-		{ .f = qsub,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "-" },
-		{ .f = qmul,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "*" },
-		{ .f = qdiv,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "/" },
-		{ .f = qmin,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "min" },
-		{ .f = qmax,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "max" },
-		{ .m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
-		{ .m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
-		{ .m = qround,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "round" },
-		{ .m = qabs,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
-		{ .m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
-		{ .m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
-		{ .c = qmore,   .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = ">" },
-		{ .c = qless,   .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "<" },
-		{ .c = qequal,  .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "==" },
+		{ .op.f = qadd,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "+" },
+		{ .op.f = qsub,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "-" },
+		{ .op.f = qmul,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "*" },
+		{ .op.f = qdiv,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "/" },
+		{ .op.f = qmin,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "min" },
+		{ .op.f = qmax,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "max" },
+		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
+		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
+		{ .op.m = qround,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "round" },
+		{ .op.m = qabs,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
+		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
+		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
+		{ .op.c = qmore,   .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = ">" },
+		{ .op.c = qless,   .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "<" },
+		{ .op.c = qequal,  .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "=" },
 	};
 	const size_t length = sizeof(functions) / sizeof(functions[0]);
 	for(size_t i = 0; i < length; i++) {
@@ -55,46 +56,9 @@ static const function_t *lookup(char *op) {
 
 static int qprint(FILE *out, q_t p) {
 	assert(out);
-	char buf[64+1] = { 0 }; /**@todo find out max length */
+	char buf[64+1] = { 0 };
 	const int r = qsprint(p, buf, sizeof buf);
 	return r < 0 ? r : fprintf(out, "%s", buf);
-}
-
-static void test_mono(FILE *out, char *op, q_t a) {
-	const function_t *func = lookup(op);
-	if(!func || func->type != FUNCTION_UNARY_ARITHMETIC_E)
-		return;
-	const function_mono_arith_t m = func->m;
-	fprintf(out, "%s(", op);
-	qprint(out, a);
-	fprintf(out, ") = ");
-	qprint(out, m(a));
-	fputc('\n', out);
-}
-
-static void test_duo(FILE *out, char *op, q_t a, q_t b) {
-	const function_t *func = lookup(op);
-	if(!func || func->type != FUNCTION_BINARY_ARITHMETIC_E)
-		return;
-	const function_duo_arith_t f = func->f;
-	qprint(out, a);
-	fprintf(out, " %s ", op);
-	qprint(out, b);
-	fprintf(out, " = ");
-	qprint(out, f(a, b));
-	fputc('\n', out);
-}
-
-static void test_comp(FILE *out, char *op, q_t a, q_t b) {
-	const function_t *func = lookup(op);
-	if(!func || func->type != FUNCTION_BINARY_COMPARISON_E)
-		return;
-	const function_duo_compare_t c = func->c;
-	qprint(out, a);
-	fprintf(out, " %s ", op);
-	qprint(out, b);
-	fprintf(out, " = %s", c(a, b) ? "true" : "false");
-	fputc('\n', out);
 }
 
 static void printq(FILE *out, q_t q, const char *msg) {
@@ -103,15 +67,27 @@ static void printq(FILE *out, q_t q, const char *msg) {
 	fputc('\n', out);
 }
 
-static void printsc(FILE *out, q_t theta) {
+static void print_sincos(FILE *out, q_t theta) {
+	assert(out);
 	q_t sine  = qinfo.zero, cosine = qinfo.zero;
-	qcordic(theta, 16, &sine, &cosine);
+	qcordic(theta, -1, &sine, &cosine);
 	qprint(out, theta);
 	fprintf(out, ",");
 	qprint(out, sine);
 	fprintf(out, ",");
 	qprint(out, cosine);
 	fprintf(out, "\n");
+}
+
+static void print_sincos_table(FILE *out) {
+	assert(out);
+	const q_t tpi   = qdiv(qinfo.pi, qint(20));
+	const q_t end   = qmul(qinfo.pi, qint(2));
+	const q_t start = qnegate(end);
+	fprintf(out, "theta,sine,cosine\n");
+	for(q_t i = start; qless(i, end); i = qadd(i, tpi)) {
+		print_sincos(out, i);
+	}
 }
 
 static void qinfo_print(FILE *out, const qinfo_t *qi) {
@@ -167,46 +143,96 @@ static const char *eval_error(int e) {
 	return msgs[e] ? msgs[e] : "unknown";
 }
 
-static q_t eval_binary_arith(function_duo_arith_t f, q_t expected, q_t bound, q_t arg1, q_t arg2, q_t *result)
-{
-	assert(f);
+static int qwithin(q_t v, q_t b1, q_t b2) {
+	const q_t hi = qmax(b1, b2);
+	const q_t lo = qmin(b1, b2);
+	if(qequal(v, b1) || qequal(v, b2))
+		return 1;
+	return qless(v, hi) && qmore(v, lo) ? 1 : 0;
+}
+
+static int qwithin_bounds(q_t v, q_t expected, q_t allowance) {
+	const q_t b1 = qadd(expected, allowance);
+	const q_t b2 = qsub(expected, allowance);
+	return qwithin(v, b1, b2);
+}
+
+static int eval_unary_arith(function_unary_arith_t m, q_t expected, q_t bound, q_t arg1, q_t *result) {
+	assert(m);
 	assert(result);
-	const q_t r = f(arg1, arg2);
+	const q_t r = m(arg1);
 	*result = r;
-	if(qequal(r, expected))
+	if(qwithin_bounds(r, expected, bound))
 		return 0;
 	return -1;
 }
 
+static int eval_binary_comp(function_binary_compare_t c, q_t expected, q_t arg1, q_t arg2, q_t *result) {
+	assert(c);
+	assert(result);
+	const int r = c(arg1, arg2);
+	*result = qint(r);
+	if(r == qtoi(expected))
+		return 0;
+	return -1;
+}
+
+static int eval_binary_arith(function_binary_arith_t f, q_t expected, q_t bound, q_t arg1, q_t arg2, q_t *result) {
+	assert(f);
+	assert(result);
+	const q_t r = f(arg1, arg2);
+	*result = r;
+	if(qwithin_bounds(r, expected, bound))
+		return 0;
+	return -1;
+}
+
+/**@todo allow saturation/wrapping mode changes */
 static int eval(char *line, q_t *result) {
 	assert(line);
 	assert(result);
 	*result = qinfo.zero;
-	char operation[N] = { 0 }, expected[N] = { 0 }, arg1[N] = { 0 }, arg2[N] = { 0 };
-	const int count = sscanf(line, "%15s %15s %15s %15s", operation, expected, arg1, arg2);
-	if(count < 3)
+	char operation[N] = { 0 }, expected[N] = { 0 }, bounds[N], arg1[N] = { 0 }, arg2[N] = { 0 };
+	const int count = sscanf(line, "%15s %15s +- %15s | %15s %15s", operation, expected, bounds, arg1, arg2);
+	if(count < 4)
 		return -EVAL_ERROR_SCAN_E;
 	const function_t *func = lookup(operation);
 	if(!func)
 		return -EVAL_ERROR_OPERATION_E;
-	if(func->type != FUNCTION_BINARY_ARITHMETIC_E) /**@todo implement other function types */
-		return EVAL_ERROR_TYPE_E;
-	q_t e = 0, a1 = 0, a2 = 0;
-	const int argc = count - 2;
+	q_t e = qinfo.zero, b = qinfo.zero, a1 = qinfo.zero, a2 = qinfo.zero;
+	const int argc = count - 3;
 	if(func->arity != argc)
 		return -EVAL_ERROR_ARG_COUNT_E;
 	if(qconv(&e, expected) < 0)
 		return -EVAL_ERROR_CONVERT_E;
+	if(qconv(&b, bounds) < 0)
+		return -EVAL_ERROR_CONVERT_E;
 	if(qconv(&a1, arg1) < 0)
 		return -EVAL_ERROR_CONVERT_E;
-	if(qconv(&a2, arg2) < 0)
-		return -EVAL_ERROR_CONVERT_E;
-	if(eval_binary_arith(func->f, e, qinfo.zero, a1, a2, result) < 0)
-		return -EVAL_ERROR_UNEXPECTED_RESULT_E;
+	switch(func->type) {
+	case FUNCTION_UNARY_ARITHMETIC_E:
+		if(eval_unary_arith(func->op.m, e, b, a1, result) < 0)
+			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
+		break;
+	case FUNCTION_BINARY_ARITHMETIC_E:
+		if(qconv(&a2, arg2) < 0)
+			return -EVAL_ERROR_CONVERT_E;
+		if(eval_binary_arith(func->op.f, e, b, a1, a2, result) < 0)
+			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
+		break;
+	case FUNCTION_BINARY_COMPARISON_E:
+		if(qconv(&a2, arg2) < 0)
+			return -EVAL_ERROR_CONVERT_E;
+		if(eval_binary_comp(func->op.f, e, a1, a2, result) < 0)
+			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
+		break;
+	default:
+		return -EVAL_ERROR_TYPE_E;
+	}
 	return EVAL_OK_E;
 }
 
-void trim(char *s) {
+static void trim(char *s) {
 	const int size = strlen(s);
 	for(int i = size - 1; i >= 0; i--) {
 		if(!isspace(s[i]))
@@ -215,16 +241,10 @@ void trim(char *s) {
 	}
 }
 
-int main(int argc, char **argv) {
-	/**@todo proper argument processing; help, info, generate sine table */
-	if(argc > 2) {
-		fprintf(stderr, "usage: %s file\n", argv[0]);
-		return -1;
-	}
-	FILE *input = argc == 2 ? fopen_or_die(argv[1], "rb") : stdin;
-	FILE *output = stdout;
+static int eval_file(FILE *input, FILE *output) {
+	assert(input);
+	assert(output);
 	char line[256] = { 0 };
-	//qinfo_print(output, &qinfo);
 	while(fgets(line, sizeof(line) - 1, input)) {
 		q_t result = 0;
 		const int r = eval(line, &result);
@@ -237,59 +257,54 @@ int main(int argc, char **argv) {
 			fputc('\n', output);
 			return -1;
 		}
-		fprintf(output, "ok: %s", line);
+		trim(line);
+		char rstring[64+1] = { 0 };
+		qsprint(result, rstring, sizeof(rstring) - 1);
+		fprintf(output, "ok: %s | (%s)\n", line, rstring);
 		memset(line, 0, sizeof line);
 	}
-	fclose(input);
+	return 0;
+}
+
+static void help(FILE *out, const char *arg0) {
+	const char *h = "\n\
+Program: Q-Number (Q16.16, signed) library testbench\n\
+Author:  Richard James Howe (2018)\n\
+License: MIT\n\
+E-mail:  howe.r.j.89@gmail.com\n\
+Site:    https://github.com/howerj/q\n\
+\n\n";
+	fprintf(out, "usage: %s -h -s -i file\n", arg0);
+	fputs(h, out);
+}
+
+int main(int argc, char **argv) {
+	bool ran = false;
+	for(int i = 1; i < argc; i++) {
+		if(!strcmp("-h", argv[i])) {
+			help(stdout, argv[0]);
+			return 0;
+		} else if(!strcmp("-s", argv[i])) {
+			print_sincos_table(stdout);
+			ran = true;
+		} else if(!strcmp("-i", argv[i])) {
+			qinfo_print(stdout, &qinfo);
+			ran = true;
+		} else {
+			FILE *input = fopen_or_die(argv[i], "rb");
+			FILE *output = stdout;
+			const int r = eval_file(input, output);
+			ran = true;
+			fclose(input);
+			if(r < 0)
+				return -1;
+		}
+	}
+	if(!ran)
+		return eval_file(stdin, stdout);
 	return 0;
 
-	FILE *out = stdout;
-	q_t p1 = qmk( 3, HIGH/5 );
-       	q_t p2 = qmk(-3, HIGH/5);
-	q_t p3 = qint(2);
-	test_duo(out, "+", p1, p2); /**@todo replace '+' with lookup based on function name */
-	test_duo(out, "+", p1, p1);
-	test_duo(out, "-", p1, p2);
-	test_duo(out, "-", p1, p1);
-	test_duo(out, "*", p1, p2);
-	test_duo(out, "*", p1, p1);
-	test_duo(out, "/", p1, p2);
-	test_duo(out, "/", p1, p1);
-	test_duo(out, "/", p1, p3);
-	test_duo(out, "/", p2, p3);
-
-	test_mono(out, "negate", qinfo.pi);
-	test_mono(out, "negate", p2);
-	test_mono(out, "trunc",  p1);
-	test_mono(out, "trunc",  p2);
-	test_mono(out, "trunc",  qint(2));
-	test_mono(out, "trunc",  qint(-2));
-
-	test_comp(out, "==", p1, p1);
-	test_comp(out, "==", p1, p2);
-
-	test_comp(out, ">", p1, p2);
-	test_comp(out, ">", p2, p1);
-	test_comp(out, ">", p1, p1);
-
-	test_comp(out, "<", p1, p2);
-	test_comp(out, "<", p2, p1);
-	test_comp(out, "<", p1, p1);
-
-	qinfo_print(out, &qinfo);
-
-	test_duo(out, "+", qinfo.max, qinfo.one);
-	test_duo(out, "+", qinfo.max, qinfo.max);
-	test_duo(out, "-", qinfo.min, qinfo.one);
-
-	/**@todo test different saturation handlers */
-
-	test_duo(out, "/", qmk(2, (2*HIGH)/3), qmk(0, HIGH));
-	q_t conv = qinfo.zero;
-	qconv(&conv, "-12.06259");
-	qprint(out, conv);
-	fputc('\n', out);
-
+	/*
 	const q_t tpi   = qdiv(qinfo.pi, qint(20));
 	const q_t start = qmul(qinfo.pi, qint(2));
 	for(q_t i = qnegate(start); qless(i, start); i = qadd(i, tpi)) {
@@ -304,16 +319,8 @@ int main(int argc, char **argv) {
 	test_duo(out, "+", qinfo.max, qinfo.one);
 	test_duo(out, "+", qinfo.max, qinfo.max);
 	test_duo(out, "-", qinfo.min, qinfo.one);
-	qconf.bound = qbound_saturate;
-
-	/**@todo interactive calculator, or interactive test bench, with
-	 * a format of:
-	 *
-	 * 	operation values expected +/-bound
-	 * 	operation values integer
-	 *
-	 * */
-
-	return 0;
+	qconf.bound = qbound_saturate; 
+	
+	return 0;*/
 }
 
