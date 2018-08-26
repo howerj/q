@@ -9,6 +9,9 @@ all: ${TARGET}
 run: ${TARGET} t.q
 	./${TARGET} t.q
 
+test: ${TARGET}
+	./${TARGET} -t
+
 ${TARGET}: *.c
 
 clean:

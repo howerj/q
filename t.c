@@ -45,10 +45,20 @@ static const function_t *lookup(char *op) {
 		{ .op.f = qrem,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "rem" },
 		{ .op.f = qmin,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "min" },
 		{ .op.f = qmax,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "max" },
+		{ .op.f = qcopysign,.arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "copysign" },
+		{ .op.f = qand,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "and" },
+		{ .op.f = qor,     .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "or" },
+		{ .op.f = qxor,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "xor" },
+		{ .op.f = qars,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "arshift" },
+		{ .op.f = qlrs,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "rshift" },
+		{ .op.f = qals,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "alshift" },
+		{ .op.f = qlls,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "lshift" },
 
 		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
 		{ .op.m = qround,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "round" },
+		{ .op.m = qfloor,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "floor" },
+		{ .op.m = qceil,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "ceil" },
 		{ .op.m = qabs,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
 		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
@@ -59,6 +69,8 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qabs,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
 		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
+		{ .op.m = qtan,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "tan" },
+		{ .op.m = qcot,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cot" },
 
 		{ .op.p = qisinteger,  .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "int?" },
 		{ .op.p = qisnegative, .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "neg?" },
@@ -308,7 +320,7 @@ static int eval_file(FILE *input, FILE *output) {
 	return 0;
 }
 
-static int internal_tests(void) {
+static int test_sanity(void) {
 	unit_test_start();
 
 	q_t t1 = 0, t2 = 0;
@@ -317,6 +329,57 @@ static int internal_tests(void) {
 	unit_test(qtoi(qadd(t1, t2)) == 3);
 
 	return unit_test_finish();
+}
+
+static int test_pack(void) {
+	unit_test_start();
+	q_t p1 = 0, p2 = 0;
+	char buf[sizeof(p1)] = { 0 };
+	unit_test_statement(p1 = qnegate(qinfo.pi));
+	unit_test_statement(p2 = 0);
+	unit_test(qunequal(p1, p2));
+	unit_test(  qpack(&p1, buf, sizeof p1 - 1) < 0);
+	unit_test(  qpack(&p1, buf, sizeof buf) == sizeof(p1));
+	unit_test(qunpack(&p2, buf, sizeof buf) == sizeof(p2));
+	unit_test(qequal(p1, p2));
+	return unit_test_finish();
+}
+
+static int test_fma(void) {
+	unit_test_start();
+
+	q_t a, b, c, r;
+	const q_t one_and_a_half = qdiv(qint(3), qint(2));
+
+	/* incorrect, but expected, result due to saturation */
+	unit_test_statement(a = qinfo.max);
+	unit_test_statement(b = one_and_a_half);
+	unit_test_statement(c = qinfo.min);
+	unit_test_statement(r = qadd(qmul(a, b), c));
+	unit_test(qwithin_bounds(r, qint(0), qint(1)));
+
+	/* correct result using Fused Multiply Add */
+	unit_test_statement(a = qinfo.max);
+	unit_test_statement(b = one_and_a_half);
+	unit_test_statement(c = qinfo.min);
+	unit_test_statement(r = qfma(a, b, c));
+	unit_test(qwithin_bounds(r, qdiv(qinfo.max, qint(2)), qint(1)));
+
+	return unit_test_finish();
+}
+
+static int internal_tests(void) {
+	typedef int (*unit_test_t)(void);
+	unit_test_t tests[] = {
+		test_sanity,
+		test_pack,
+		test_fma,
+		NULL
+	};
+	for(size_t i = 0; tests[i]; i++)
+		if(tests[i]() < 0)
+			return -1;
+	return 0;
 }
 
 static void help(FILE *out, const char *arg0) {
@@ -358,6 +421,9 @@ numbers of the form '-12.45'. 'expected' is the expected result,\n\
 
 int main(int argc, char **argv) {
 	bool ran = false;
+	char *on = getenv("COLOR");
+	unit_color_on = (on && !strcmp(on, "on"));
+
 	for(int i = 1; i < argc; i++) {
 		if(!strcmp("-h", argv[i])) {
 			help(stdout, argv[0]);

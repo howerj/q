@@ -12,7 +12,8 @@
 #include <stddef.h>
 
 typedef int32_t q_t;  /**< Q Fixed Point Number, (Q16.16, Signed) */
-typedef int64_t ld_t; /**< */
+typedef int64_t ld_t; /**< Double width of Q, signed, for internal calculations, not in Q format */
+typedef int32_t  d_t; /* same width as Q,  signed, but not in Q format */
 
 typedef struct {
 	size_t whole,      /**< number of bits for whole, or integer, part of Q number */
@@ -59,50 +60,49 @@ int qunequal(q_t a, q_t b);
 
 int qtoi(q_t toi);
 q_t qint(int toq);
+q_t qmk(long integer, long unsigned fractional);
+
 q_t qnegate(q_t a);
 q_t qmin(q_t a, q_t b);
 q_t qmax(q_t a, q_t b);
 q_t qabs(q_t a);
-q_t qmk(int integer, unsigned fractional);
+q_t qcopysign(q_t a, q_t b);
+
 q_t qadd(q_t a, q_t b);
 q_t qsub(q_t a, q_t b);
 q_t qmul(q_t a, q_t b);
 q_t qdiv(q_t a, q_t b);
 q_t qrem(q_t a, q_t b);
+q_t qfma(q_t a, q_t b, q_t c);
+
 q_t qround(q_t q);
+q_t qceil(q_t q);
 q_t qtrunc(q_t q);
+q_t qfloor(q_t q);
+
+q_t qand(q_t a, q_t b);
+q_t qxor(q_t a, q_t b);
+q_t qor(q_t a, q_t b);
+q_t qinvert(q_t a);
+q_t qars(q_t a, q_t b);
+q_t qlrs(q_t a, q_t b);
+q_t qlls(q_t a, q_t b);
+q_t qals(q_t a, q_t b);
 
 int qsprint(q_t p, char *s, size_t length);
 int qnconv(q_t *q, char *s, size_t length);
 int qconv(q_t *q, char *s);
+
 int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine);
 void qsincos(q_t theta, q_t *sine, q_t *cosine);
 q_t qsin(q_t theta);
 q_t qcos(q_t theta);
+q_t qtan(q_t theta);
+q_t qcot(q_t theta);
 
-/** @brief This function should behave the same as the standard C library
- * function 'strtol', except the string length is limited by 'length'. It
- * will attempt to convert the provided string.
- *  @param [in] str, A NUL terminated ASCII string, possibly representing a
- *  number. An optional '+' may be prefixed to the number, and a '-' can
- *  be used to indicate negative numbers
- *  @param [in] length, maximum length of the string, regardless of any
- *  NUL terminator (or lack thereof).
- *  @param [out] endptr, pointer to last unconverted digit, *or* a pointer
- *  to the last character if 'length' would be exceeded. (@note would
- *  it be better to point after?)
- *  @param [in] base, The conversion radix. Valid values range from 2-36 with
- *  the characters 'A'-'Z' (or 'a'-'z') representing numbers from 10-35 once 
- *  the decimal  digits run out. '0' is a special case that allows a 
- *  prefix (coming after any optional '+' or '-') to indicate whether the 
- *  string is in octal (prefix '0'), hexadecimal (prefix "0x" or "0X") or decimal
- *  (no prefix).
- *  @return The converted value is returned, or zero on failure, as
- *  zero is a valid number an analysis of the 'endptr' is needed to
- *  determine if the conversion succeeded. If the result is out of range
- *  'LONG_MAX' is returned for positive numbers an 'LONG_MIN' is returned for
- *  negative numbers and 'errno' is set to 'ERANGE' */
+d_t arshift(d_t v, unsigned p);
 long int strntol(const char *str, size_t length, const char **endptr, int base);
-
+int qpack(const q_t *q, char *buffer, size_t length);
+int qunpack(q_t *q, const char *buffer, size_t length);
 
 #endif

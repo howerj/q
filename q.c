@@ -38,7 +38,6 @@
 
 typedef  int16_t hd_t; /* half Q width,      signed */
 typedef uint32_t  u_t; /* same width as Q, unsigned, but not in Q format */
-typedef  int32_t  d_t; /* same width as Q,   signed, but not in Q format */
 typedef uint64_t lu_t; /* double Q width,  unsigned */
 
 #define BITS  (16)
@@ -111,7 +110,7 @@ static inline q_t qsat(ld_t s) {
 	return s;
 }
 
-static inline d_t arshift(d_t v, unsigned p) {
+inline d_t arshift(d_t v, unsigned p) {
 	u_t vn = v;
 	if(v >= 0)
 		return vn >> p;
@@ -142,6 +141,35 @@ q_t qmax(q_t a, q_t b)     { return qmore(a, b) ? a : b; }
 q_t qabs(q_t a)            { return qisnegative(a) ? qnegate(a) : a; }
 q_t qadd(q_t a, q_t b)     { return qsat((ld_t)a + (ld_t)b); }
 q_t qsub(q_t a, q_t b)     { return qsat((ld_t)a - (ld_t)b); }
+q_t qcopysign(q_t a, q_t b) { return qisnegative(b) ? qnegate(qabs(a)) : qabs(a); }
+
+q_t qand(q_t a, q_t b)     { return a & b; }
+q_t qxor(q_t a, q_t b)     { return a ^ b; }
+q_t qor(q_t a, q_t b)      { return a | b; }
+q_t qinvert(q_t a)         { return ~a; }
+q_t qars(q_t a, q_t b)     { return arshift(a, qtoi(b)); }
+q_t qlrs(q_t a, q_t b)     { return (u_t)a >> (u_t)qtoi(b); }
+q_t qlls(q_t a, q_t b)     { return (u_t)a << b; }
+q_t qals(q_t a, q_t b)     { return (u_t)a << b; }
+
+/* <http://www.cplusplus.com/reference/cmath/round/>
+	value   round   floor   ceil    trunc
+	-----   -----   -----   ----    -----
+	 2.3     2.0     2.0     3.0     2.0
+	 3.8     4.0     3.0     4.0     3.0
+	 5.5     6.0     5.0     6.0     5.0
+	-2.3    -2.0    -3.0    -2.0    -2.0
+	-3.8    -4.0    -4.0    -3.0    -3.0
+	-5.5    -6.0    -6.0    -5.0    -5.0 */
+q_t qfloor(q_t q) { 
+	return q & ~MASK; 
+}
+
+q_t qceil(q_t q) {
+	const q_t adj = qisinteger(q) ? qinfo.zero : qinfo.one;
+	q = qadd(q, adj);
+	return ((u_t)q) & (MASK << BITS);
+}
 
 q_t qtrunc(q_t q) {
 	const q_t adj = qisnegative(q) && qlow(q) ? qinfo.one : qinfo.zero;
@@ -149,18 +177,63 @@ q_t qtrunc(q_t q) {
 	return ((u_t)q) & (MASK << BITS);
 }
 
-q_t qmk(int integer, unsigned fractional) {
+q_t qround(q_t q) {
+	const int negative = qisnegative(q);
+	q = qabs(q);
+	const q_t adj = qlow(q) & HIGH ? qinfo.one : qinfo.zero;
+	q = qadd(q, adj);
+	q = ((u_t)q) & (MASK << BITS);
+	return negative ? qnegate(q) : q;
+}
+
+int qpack(const q_t *q, char *buffer, size_t length) {
+	assert(buffer);
+	if(length < sizeof(*q))
+		return -1;
+	q_t qn = *q;
+	uint8_t *b = (uint8_t*)buffer;
+	for(size_t i = 0; i < sizeof(qn); i++) {
+		b[i] = qn;
+		qn = (u_t)qn >> CHAR_BIT;
+	}
+	return sizeof(qn);
+}
+
+int qunpack(q_t *q, const char *buffer, size_t length) {
+	assert(q);
+	assert(buffer);
+	if(length < sizeof(*q))
+		return -1;
+	uint8_t *b = (uint8_t*)buffer;
+	u_t nq = 0;
+	for(size_t i = 0; i < sizeof(*q); i++) {
+		nq <<= CHAR_BIT;
+		nq |= b[sizeof(*q)-i-1];
+	}
+	*q = nq;
+	return sizeof(*q);
+}
+
+q_t qmk(long integer, unsigned long fractional) {
 	const int negative = integer < 0;
 	integer = negative ? -integer : integer;
 	const q_t r = qcons((d_t)integer, fractional);
 	return negative ? qnegate(r) : r;
 }
 
-q_t qmul(q_t a, q_t b) {
+static inline ld_t multiply(q_t a, q_t b) {
 	const ld_t dd = ((ld_t)a * (ld_t)b) + (lu_t)HIGH;
-	/* NB. portable version of "dd >> BITS" */
-	const lu_t ud = dd < 0 ? (-1ULL << (2*BITS)) | ((lu_t)dd >> BITS) : ((lu_t)dd) >> BITS;
-	return qsat(ud);
+	/* NB. portable version of "dd >> BITS", for double width signed values */
+	return dd < 0 ? (-1ULL << (2*BITS)) | ((lu_t)dd >> BITS) : ((lu_t)dd) >> BITS;
+}
+
+q_t qmul(q_t a, q_t b) {
+	return qsat(multiply(a, b));
+}
+
+q_t qfma(q_t a, q_t b, q_t c) {
+	const ld_t ab = multiply(a, b);
+	return qsat(ab + (ld_t)c);
 }
 
 q_t qdiv(q_t a, q_t b) {
@@ -180,25 +253,13 @@ q_t qrem(q_t a, q_t b)
 	return qsub(a, qmul(qtrunc(div), b));
 }
 
-/*q_t qfloor(q_t q)
-{
-}
 
-q_t qceil(q_t q)
-{
-}
-
+/*
 q_t qmod(q_t a, q_t b)
 {
 }
 
 */
-
-q_t qround(q_t q) {
-	const int negative = qisnegative(q);
-	const int round    = !!( qlow(q) & HIGH);
-	return qsat(((ld_t)q) + (negative ? -round : round));
-}
 
 static char itoch(unsigned ch) {
 	assert(ch < 36);
@@ -365,7 +426,7 @@ int qnconv(q_t *q, char *s, size_t length) {
 	memset(q, 0, sizeof *q);
 	const char *endptr = NULL;
 	errno = 0;
-	if(*s != '.') {
+	if(*s != '.') { /**@bug negative -0.X is not handled! */
 		hi = strntol(s, length, &endptr, base);
 		if(errno || endptr == s) /**@todo remove dependency on errno */
 			return -1;
@@ -405,15 +466,15 @@ int qconv(q_t *q, char *s) {
 int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	assert(sine);
 	assert(cosine);
-	/**@todo improve precision, 18-bit lookup table? */
 	static const u_t lookup[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
-		0x3243uL, 0x1DACuL, 0x0FADuL, 0x07F5uL,
-		0x03FEuL, 0x01FFuL, 0x00FFuL, 0x007FuL,
-		0x003FuL, 0x001FuL, 0x000FuL, 0x0007uL,
-		0x0003uL, 0x0001uL, 0x0000uL, 0x0000uL,
+		0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL, 
+		0x0FFAuL, 0x07FFuL, 0x03FFuL, 0x01FFuL, 
+		0x00FFuL, 0x007FuL, 0x003FuL, 0x001FuL, 
+		0x000FuL, 0x0007uL, 0x0003uL, 0x0001uL, 
+		0x0000uL, // 0x0000uL,
 	};
-	const size_t length = sizeof lookup / sizeof lookup[0];
-	const d_t iscaling = 0x26DD; /* 1/scaling-factor */
+	static const size_t length = sizeof lookup / sizeof lookup[0];
+	static const d_t iscaling = 0x9B74; /* 1/scaling-factor */
 
 	iterations = iterations > (int)length ? (int)length : iterations;
 	iterations = iterations < 0           ? (int)length : iterations;
@@ -452,12 +513,11 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 		shift =  1;
 	}
 
-	/* convert to internal scaling for CORDIC routine (not q16.16!) */
+	d_t x = iscaling, y = 0, z = theta /* no scaling needed */;
 
-	/**@todo better scaling */
-	d_t x = iscaling, y = 0, z = arshift(theta, 2);
-
-	for(size_t i = 0; i < (unsigned)iterations; i++) {
+	/* rotation mode: z determines direction,
+	 * vector mode:   y determines direction */
+	for(size_t i = 0; i < (unsigned)iterations; i++) { 
 		const d_t  d =   -!!(z < 0);
 		const d_t xn = x - ((arshift(y, i) ^ d) - d);
 		const d_t yn = y + ((arshift(x, i) ^ d) - d);
@@ -469,7 +529,7 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	/* correct overflow in cosine */
 	//if(x < 0) x = -x;
 
-	/* shift */
+	/* undo shifting and quadrant changes */
 	if(shift > 0) {
 		const d_t yt = y;
 		y =  x;
@@ -479,15 +539,14 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 		y = -x;
 		x =  yt;
 	}
-	/* quadrant */
+
 	if(negate) {
 		x = -x;
 		y = -y;
 	}
-	/* rescale and set output */
-	/* @todo better scaling */
-	*cosine = x << 2;
-	  *sine = y << 2;
+	/* set output; no scaling needed */
+	*cosine = x;
+	  *sine = y;
 	return 0;
 }
 
@@ -508,3 +567,29 @@ q_t qcos(q_t theta) {
 	return cosine;
 }
 
+q_t qtan(q_t theta) {
+	q_t sine = 0, cosine = 0;
+	qsincos(theta, &sine, &cosine);
+	return qdiv(sine, cosine);
+}
+
+q_t qcot(q_t theta) {
+	q_t sine = 0, cosine = 0;
+	qsincos(theta, &sine, &cosine);
+	return qdiv(cosine, sine);
+}
+
+/*
+q_t qsinh(q_t x) {
+  // (e^x - e^-x) / 2 
+}
+
+q_t qcosh(q_t x) {
+  // (e^x + e^-x) / 2 
+}
+
+q_t qtanh(q_t x) {
+  // (e^2x - 1) / (e^2x + 1)
+}
+
+*/
