@@ -59,6 +59,8 @@ typedef uint64_t lu_t; /* double Q width,  unsigned */
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #endif
 
+#define QPI (0x3243Fl)
+
 const qinfo_t qinfo = {
 	.whole      = BITS,
 	.fractional = BITS,
@@ -69,7 +71,7 @@ const qinfo_t qinfo = {
 	.max  = (u_t)((HIGH << BITS) - 1uL),
 
 	/**@warning these constants are dependent on the bit width due to how they are defined */
-	.pi    = 0x3243FuL /* 3.243F6 A8885 A308D 31319 8A2E0... */,
+	.pi    = QPI /* 3.243F6 A8885 A308D 31319 8A2E0... */,
 	.e     = 0x2B7E1uL /* 2.B7E1 5162 8A... */ ,
 	.sqrt2 = 0x16A09uL /* 1.6A09 E667 F3... */ ,
 	.sqrt3 = 0x1BB67uL /* 1.BB67 AE85 84... */ ,
@@ -461,41 +463,89 @@ int qconv(q_t *q, char *s) {
 	return qnconv(q, s, strlen(s));
 }
 
+typedef enum {
+	CORDIC_MODE_VECTOR_E,
+	CORDIC_MODE_ROTATE_E,
+} cordic_mode_e;
+
+static const d_t scaling = 0x9B74; /* 1/scaling-factor */
+static const u_t cordic_arctan_table[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
+	0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL, 
+	0x0FFAuL, 0x07FFuL, 0x03FFuL, 0x01FFuL, 
+	0x00FFuL, 0x007FuL, 0x003FuL, 0x001FuL, 
+	0x000FuL, 0x0007uL, 0x0003uL, 0x0001uL, 
+	0x0000uL, // 0x0000uL,
+};
+static const size_t cordic_arctan_table_length = sizeof cordic_arctan_table / sizeof cordic_arctan_table[0];
+
+#ifdef HYPERBOLIC
+static const d_t hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
+static const u_t cordic_arctanh_table[] = { /* atanh(2^-1), atanh(2^-2), ... */
+	0x8c9fuL, 0x4162uL, 0x202buL, 0x1005uL,
+	0x0800uL, 0x0400uL, 0x0200uL, 0x0100uL,
+	0x0080uL, 0x0040uL, 0x0020uL, 0x0010uL,
+	0x0008uL, 0x0004uL, 0x0002uL, 0x0001uL,
+	0x0000uL, // 0x0000uL,
+};
+static const size_t cordic_arctanh_table_length = sizeof cordic_arctanh_table / sizeof cordic_arctanh_table[0];
+#endif
+
+static inline int cordic(const u_t *lookup, size_t length, int iterations, d_t *x0, d_t *y0, d_t *z0, cordic_mode_e mode) {
+	assert(lookup);
+	assert(x0);
+	assert(y0);
+	assert(z0);
+
+	iterations = iterations > (int)length ? (int)length : iterations;
+	iterations = iterations < 0           ? (int)length : iterations;
+
+	d_t x = *x0, y = *y0, z = *z0;
+
+	/* rotation mode: z determines direction,
+	 * vector mode:   y determines direction */
+	for(size_t i = 0; i < (unsigned)iterations; i++) { 
+		const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -y;
+		const d_t  d =   -!!(m < 0);
+		const d_t xn = x - ((arshift(y, i) ^ d) - d);
+		const d_t yn = y + ((arshift(x, i) ^ d) - d);
+		const d_t zn = z - ((lookup[i] ^ d) - d);
+		x = xn; /* cosine, in rotation mode */
+		y = yn; /*   sine, in rotation mode   */
+		z = zn;
+	}
+	/* correct overflow in cosine */
+	//if(x < 0) 
+	//	x = -x;
+
+	*x0 = x;
+	*y0 = y;
+	*z0 = z;
+
+	return 0;
+}
+
 /* See: - <https://dspguru.com/dsp/faqs/cordic/>
  *      - <https://en.wikipedia.org/wiki/CORDIC> */
 int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	assert(sine);
 	assert(cosine);
-	static const u_t lookup[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
-		0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL, 
-		0x0FFAuL, 0x07FFuL, 0x03FFuL, 0x01FFuL, 
-		0x00FFuL, 0x007FuL, 0x003FuL, 0x001FuL, 
-		0x000FuL, 0x0007uL, 0x0003uL, 0x0001uL, 
-		0x0000uL, // 0x0000uL,
-	};
-	static const size_t length = sizeof lookup / sizeof lookup[0];
-	static const d_t iscaling = 0x9B74; /* 1/scaling-factor */
 
-	iterations = iterations > (int)length ? (int)length : iterations;
-	iterations = iterations < 0           ? (int)length : iterations;
-
-	/**@todo make these internal static constants */
-	const q_t   pi = qinfo.pi;
-	const q_t  npi = qnegate(qinfo.pi);
-	const q_t  qpi = qdiv(pi, qint(4));
-	const q_t qnpi = qnegate(qpi);
-	const q_t  dpi = qmul(pi, qint(2));
-	const q_t dnpi = qnegate(dpi);
-
-	int negate = 0, shift = 0;
+	static const q_t   pi =   QPI;
+	static const q_t  npi =  -QPI;
+	static const q_t  hpi =   QPI/2;
+	static const q_t hnpi = -(QPI/2);
+	static const q_t  qpi =   QPI/4;
+	static const q_t qnpi = -(QPI/4);
+	static const q_t  dpi =   QPI*2;
+	static const q_t dnpi = -(QPI*2);
 
 	/* convert to range -pi   to pi */
 	while(qless(theta, npi)) theta = qadd(theta,  dpi);
 	while(qmore(theta,  pi)) theta = qadd(theta, dnpi);
 
+	int negate = 0, shift = 0;
+
 	/* convert to range -pi/2 to pi/2 */
-	const q_t  hpi = qdiv(pi, qint(2));
-	const q_t hnpi = qnegate(hpi);
 	if(qless(theta, hnpi)) {
 		theta = qadd(theta,  pi);
 		negate = 1;
@@ -513,21 +563,10 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 		shift =  1;
 	}
 
-	d_t x = iscaling, y = 0, z = theta /* no scaling needed */;
+	d_t x = scaling, y = 0, z = theta /* no theta scaling needed */;
 
-	/* rotation mode: z determines direction,
-	 * vector mode:   y determines direction */
-	for(size_t i = 0; i < (unsigned)iterations; i++) { 
-		const d_t  d =   -!!(z < 0);
-		const d_t xn = x - ((arshift(y, i) ^ d) - d);
-		const d_t yn = y + ((arshift(x, i) ^ d) - d);
-		const d_t zn = z - ((lookup[i] ^ d) - d);
-		x = xn; /* cosine */
-		y = yn; /* sine   */
-		z = zn;
-	}
-	/* correct overflow in cosine */
-	//if(x < 0) x = -x;
+	if(cordic(cordic_arctan_table, cordic_arctan_table_length, iterations, &x, &y, &z, CORDIC_MODE_ROTATE_E) < 0)
+		return -1;
 
 	/* undo shifting and quadrant changes */
 	if(shift > 0) {
@@ -548,6 +587,12 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	*cosine = x;
 	  *sine = y;
 	return 0;
+}
+
+q_t qatan(q_t t) {
+	q_t x = qint(1), y = t, z = 0;
+	cordic(cordic_arctan_table, cordic_arctan_table_length, -1, &x, &y, &z, CORDIC_MODE_VECTOR_E);
+	return z;
 }
 
 void qsincos(q_t theta, q_t *sine, q_t *cosine) {
@@ -578,6 +623,14 @@ q_t qcot(q_t theta) {
 	qsincos(theta, &sine, &cosine);
 	return qdiv(cosine, sine);
 }
+
+/*q_t qsqrt(q_t n) { // Testing version of sqrt for hyperbolic cordic mode
+	const q_t quart = qdiv(qint(1), qint(4));
+	q_t x = qadd(n, quart), y = qsub(n, quart), z = 0;
+	//< @todo implement hyperbolic version of cordic routines
+	hcordic(cordic_arctanh_table, cordic_arctanh_table_length, -1, &x, &y, &z, CORDIC_MODE_VECTOR_E);
+	return qmul(x, hyperbolic_scaling);
+}*/
 
 /*
 q_t qsinh(q_t x) {

@@ -100,6 +100,8 @@ q_t qcos(q_t theta);
 q_t qtan(q_t theta);
 q_t qcot(q_t theta);
 
+q_t qatan(q_t t);
+
 d_t arshift(d_t v, unsigned p);
 long int strntol(const char *str, size_t length, const char **endptr, int base);
 int qpack(const q_t *q, char *buffer, size_t length);

@@ -70,7 +70,9 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
 		{ .op.m = qtan,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "tan" },
+		{ .op.m = qatan,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "atan" },
 		{ .op.m = qcot,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cot" },
+		//{ .op.m = qsqrt,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sqrt" },
 
 		{ .op.p = qisinteger,  .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "int?" },
 		{ .op.p = qisnegative, .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "neg?" },
