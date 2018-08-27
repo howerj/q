@@ -41,6 +41,8 @@ static const function_t *lookup(char *op) {
 		{ .op.f = qadd,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "+" },
 		{ .op.f = qsub,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "-" },
 		{ .op.f = qmul,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "*" },
+		{ .op.f = qcmul,   .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "c*" },
+		{ .op.f = qcdiv,   .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "c/" },
 		{ .op.f = qdiv,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "/" },
 		{ .op.f = qrem,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "rem" },
 		{ .op.f = qmin,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "min" },
@@ -71,8 +73,11 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
 		{ .op.m = qtan,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "tan" },
 		{ .op.m = qatan,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "atan" },
+		{ .op.m = qtanh,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "tanh" },
+		{ .op.m = qsinh,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sinh" },
+		{ .op.m = qcosh,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cosh" },
 		{ .op.m = qcot,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cot" },
-		//{ .op.m = qsqrt,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sqrt" },
+		{ .op.m = qcsqrt,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_sqrt" },
 
 		{ .op.p = qisinteger,  .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "int?" },
 		{ .op.p = qisnegative, .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "neg?" },
@@ -239,11 +244,31 @@ static int eval_binary_arith(function_binary_arith_t f, q_t expected, q_t bound,
 	return -1;
 }
 
+static int comment(char *line) {
+	assert(line);
+	const size_t length = strlen(line);
+	for(size_t i = 0; i < length; i++) {
+		if(line[i] == '#')
+			return 1;
+		if(!isspace(line[i]))
+			break;
+	}
+	for(size_t i = 0; i < length; i++) {
+		if(line[i] == '#') {
+			line[i] = 0;
+			return 0;
+		}
+	}
+	return 0;
+}
+
 /**@todo allow saturation/wrapping mode changes */
 static int eval(char *line, q_t *result) {
 	assert(line);
 	assert(result);
 	*result = qinfo.zero;
+	if(comment(line))
+		return EVAL_OK_E;
 	char operation[N] = { 0 }, expected[N] = { 0 }, bounds[N], arg1[N] = { 0 }, arg2[N] = { 0 };
 	const int count = sscanf(line, "%15s %15s +- %15s | %15s %15s", operation, expected, bounds, arg1, arg2);
 	if(count < 4)

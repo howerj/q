@@ -13,7 +13,15 @@
  * 	  - <https://rob.conery.io/2018/08/21/mod-and-remainder-are-not-the-same/>
  * 	- unit tests, built in ones
  * 	- optional conversion to floats (compile time switch)
- * 	- remove dependency on errno.h entirely
+ * 	- remove dependency on errno.h entirely, it might actually be
+ * 	worth having a qerrno equivalent, this would need to be a thread
+ * 	local variable.
+ * 	- work out bounds for all functions, especially for CORDIC
+ * 	functions
+ * 	- degrees/radians conversion routines
+ * 	- GNUPlot scripts would help in visualizing results, and
+ * 	errors, which can be calculated by comparing to comparing to
+ * 	the C library.
  * NOTES:
  * 	- <https://en.wikipedia.org/wiki/Q_%28number_format%29>
  * 	- <https://www.mathworks.com/help/fixedpoint/examples/calculate-fixed-point-sine-and-cosine.html>
@@ -83,6 +91,8 @@ qconf_t qconf = { /**@warning global configuration options */
 	.bound = qbound_saturate,
 	.dp    = 5,
 };
+
+/********* Basic Library Routines ********************************************/
 
 q_t qbound_saturate(ld_t s) { /**< default saturation handler */
 	assert(s > DMAX || s < DMIN);
@@ -262,6 +272,9 @@ q_t qmod(q_t a, q_t b)
 }
 
 */
+
+/********* Basic Library Routines ********************************************/
+/********* Numeric Input/Output **********************************************/
 
 static char itoch(unsigned ch) {
 	assert(ch < 36);
@@ -463,38 +476,89 @@ int qconv(q_t *q, char *s) {
 	return qnconv(q, s, strlen(s));
 }
 
+/********* Numeric Input/Output **********************************************/
+/********* CORDIC Routines ***************************************************/
+
 typedef enum {
 	CORDIC_MODE_VECTOR_E,
 	CORDIC_MODE_ROTATE_E,
 } cordic_mode_e;
 
-static const d_t scaling = 0x9B74; /* 1/scaling-factor */
-static const u_t cordic_arctan_table[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
-	0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL, 
-	0x0FFAuL, 0x07FFuL, 0x03FFuL, 0x01FFuL, 
-	0x00FFuL, 0x007FuL, 0x003FuL, 0x001FuL, 
-	0x000FuL, 0x0007uL, 0x0003uL, 0x0001uL, 
-	0x0000uL, // 0x0000uL,
-};
-static const size_t cordic_arctan_table_length = sizeof cordic_arctan_table / sizeof cordic_arctan_table[0];
+typedef enum {
+	CORDIC_COORD_LINEAR_E,
+	CORDIC_COORD_CIRCULAR_E,
+	CORDIC_COORD_HYPERBOLIC_E,
+} cordic_coordinates_e;
 
-#ifdef HYPERBOLIC
-static const d_t hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
-static const u_t cordic_arctanh_table[] = { /* atanh(2^-1), atanh(2^-2), ... */
-	0x8c9fuL, 0x4162uL, 0x202buL, 0x1005uL,
-	0x0800uL, 0x0400uL, 0x0200uL, 0x0100uL,
-	0x0080uL, 0x0040uL, 0x0020uL, 0x0010uL,
-	0x0008uL, 0x0004uL, 0x0002uL, 0x0001uL,
-	0x0000uL, // 0x0000uL,
-};
-static const size_t cordic_arctanh_table_length = sizeof cordic_arctanh_table / sizeof cordic_arctanh_table[0];
-#endif
+static const d_t cordic_circular_scaling   = 0x9B74; /* 1/scaling-factor */
+static const d_t cordic_hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
 
-static inline int cordic(const u_t *lookup, size_t length, int iterations, d_t *x0, d_t *y0, d_t *z0, cordic_mode_e mode) {
-	assert(lookup);
+static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations, d_t *x0, d_t *y0, d_t *z0) {
 	assert(x0);
 	assert(y0);
 	assert(z0);
+	if(mode != CORDIC_MODE_VECTOR_E && mode != CORDIC_MODE_ROTATE_E)
+		return -1;
+
+	static const u_t arctans[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
+		0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL, 
+		0x0FFAuL, 0x07FFuL, 0x03FFuL, 0x01FFuL, 
+		0x00FFuL, 0x007FuL, 0x003FuL, 0x001FuL, 
+		0x000FuL, 0x0007uL, 0x0003uL, 0x0001uL, 
+		0x0000uL, // 0x0000uL,
+	};
+	static const size_t arctans_length = sizeof arctans / sizeof arctans[0];
+
+	static const u_t arctanhs[] = { /* atanh(2^-1), atanh(2^-2), ... */
+		0x8c9fuL, 0x4162uL, 0x202buL, 0x1005uL,
+		0x0800uL, 0x0400uL, 0x0200uL, 0x0100uL,
+		0x0080uL, 0x0040uL, 0x0020uL, 0x0010uL,
+		0x0008uL, 0x0004uL, 0x0002uL, 0x0001uL,
+		0x0000uL, // 0x0000uL,
+	};
+	static const size_t arctanhs_length = sizeof arctanhs / sizeof arctanhs[0];
+
+	static const u_t halfs[] = { /* */
+		0x10000uL,
+		0x8000uL, 0x4000uL, 0x2000uL, 0x1000uL,
+		0x0800uL, 0x0400uL, 0x0200uL, 0x0100uL,
+		0x0080uL, 0x0040uL, 0x0020uL, 0x0010uL,
+		0x0008uL, 0x0004uL, 0x0002uL, 0x0001uL,
+		//0x0000uL, // 0x0000uL,
+	};
+	static const size_t halfs_length = sizeof halfs / sizeof halfs[0];
+
+	const u_t *lookup = NULL;
+	size_t i = 0, j = 0, k = 0, length = 0;
+	const size_t *shiftx = NULL, *shifty = NULL;
+	int hyperbolic = 0;
+
+	switch(coord) {
+	case CORDIC_COORD_CIRCULAR_E:
+		lookup = arctans;
+		length = arctans_length;
+		i = 0;
+		shifty = &i;
+		shiftx = &i;
+		break;
+	case CORDIC_COORD_HYPERBOLIC_E:
+		lookup = arctanhs;
+		length = arctanhs_length;
+		hyperbolic = 1;
+		i = 1;
+		shifty = &i;
+		shiftx = &i;
+		break;
+	case CORDIC_COORD_LINEAR_E:
+		lookup = halfs;
+		length = halfs_length;
+		shifty = &j;
+		shiftx = NULL;
+		i = 1;
+		break;
+	default: /* not implemented */
+		return -2;
+	}
 
 	iterations = iterations > (int)length ? (int)length : iterations;
 	iterations = iterations < 0           ? (int)length : iterations;
@@ -503,20 +567,27 @@ static inline int cordic(const u_t *lookup, size_t length, int iterations, d_t *
 
 	/* rotation mode: z determines direction,
 	 * vector mode:   y determines direction */
-	for(size_t i = 0; i < (unsigned)iterations; i++) { 
-		const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -y;
-		const d_t  d =   -!!(m < 0);
-		const d_t xn = x - ((arshift(y, i) ^ d) - d);
-		const d_t yn = y + ((arshift(x, i) ^ d) - d);
-		const d_t zn = z - ((lookup[i] ^ d) - d);
-		x = xn; /* cosine, in rotation mode */
-		y = yn; /*   sine, in rotation mode   */
-		z = zn;
+	for(; j < (unsigned)iterations; i++, j++) {
+		again:
+		{
+			const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -y;
+			const d_t  d =   -!!(m < 0);
+			const d_t xs = ((((shiftx ? arshift(y, *shiftx) : 0)) ^ d) - d);
+			const d_t ys = ((((shifty ? arshift(x, *shifty) : 0)) ^ d) - d);
+			const d_t xn = x - (hyperbolic ? -xs : xs);
+			const d_t yn = y + ys;
+			const d_t zn = z - ((lookup[j] ^ d) - d);
+			x = xn; /* cosine, in circular, rotation mode */
+			y = yn; /*   sine, in circular, rotation mode   */
+			z = zn;
+		}
+		if(hyperbolic) {
+			if(k++ >= 3) {
+				k = 0;
+				goto again;
+			}
+		}
 	}
-	/* correct overflow in cosine */
-	//if(x < 0) 
-	//	x = -x;
-
 	*x0 = x;
 	*y0 = y;
 	*z0 = z;
@@ -563,10 +634,15 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 		shift =  1;
 	}
 
-	d_t x = scaling, y = 0, z = theta /* no theta scaling needed */;
+	d_t x = cordic_circular_scaling, y = 0, z = theta /* no theta scaling needed */;
 
-	if(cordic(cordic_arctan_table, cordic_arctan_table_length, iterations, &x, &y, &z, CORDIC_MODE_ROTATE_E) < 0)
+	/* CORDIC in Q2.16 format */
+	if(cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_ROTATE_E, iterations, &x, &y, &z) < 0)
 		return -1;
+	/* correct overflow in cosine */
+	//if(x < 0) 
+	//	x = -x;
+
 
 	/* undo shifting and quadrant changes */
 	if(shift > 0) {
@@ -591,7 +667,7 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 
 q_t qatan(q_t t) {
 	q_t x = qint(1), y = t, z = 0;
-	cordic(cordic_arctan_table, cordic_arctan_table_length, -1, &x, &y, &z, CORDIC_MODE_VECTOR_E);
+	cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	return z;
 }
 
@@ -615,34 +691,62 @@ q_t qcos(q_t theta) {
 q_t qtan(q_t theta) {
 	q_t sine = 0, cosine = 0;
 	qsincos(theta, &sine, &cosine);
-	return qdiv(sine, cosine);
+	return qdiv(sine, cosine); // @todo replace with CORDIC divide
 }
 
 q_t qcot(q_t theta) {
 	q_t sine = 0, cosine = 0;
 	qsincos(theta, &sine, &cosine);
-	return qdiv(cosine, sine);
+	return qdiv(cosine, sine); // @todo replace with CORDIC divide
 }
 
-/*q_t qsqrt(q_t n) { // Testing version of sqrt for hyperbolic cordic mode
-	const q_t quart = qdiv(qint(1), qint(4));
-	q_t x = qadd(n, quart), y = qsub(n, quart), z = 0;
-	//< @todo implement hyperbolic version of cordic routines
-	hcordic(cordic_arctanh_table, cordic_arctanh_table_length, -1, &x, &y, &z, CORDIC_MODE_VECTOR_E);
-	return qmul(x, hyperbolic_scaling);
-}*/
-
-/*
-q_t qsinh(q_t x) {
-  // (e^x - e^-x) / 2 
+/**@bug only works for small values, and not for all negative inputs, bounds
+ * need to be worked out and the sign problem fixed. */
+q_t qcmul(q_t a, q_t b) { 
+	q_t x = a, y = 0, z = b;
+	cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
+	return y;
 }
 
-q_t qcosh(q_t x) {
-  // (e^x + e^-x) / 2 
+q_t qcdiv(q_t a, q_t b) {
+	q_t x = b, y = a, z = 0;
+	cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	return z;
 }
 
-q_t qtanh(q_t x) {
-  // (e^2x - 1) / (e^2x + 1)
+void qsincosh(q_t a, q_t *sinh, q_t *cosh) {
+	q_t x = cordic_hyperbolic_scaling, y = 0, z = a; // (e^2x - 1) / (e^2x + 1)
+	cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
+	*sinh = y;
+	*cosh = x;
 }
 
-*/
+q_t qtanh(q_t a) { /**@todo test -1 once parser is fixed '-0.7615' is result */
+	q_t sinh = 0, cosh = 0;
+	qsincosh(a, &sinh, &cosh);
+	return qdiv(sinh, cosh);
+}
+
+q_t qcosh(q_t a) {
+	q_t sinh = 0, cosh = 0;
+	qsincosh(a, &sinh, &cosh);
+	return cosh;
+}
+
+q_t qsinh(q_t a) {
+	q_t sinh = 0, cosh = 0;
+	qsincosh(a, &sinh, &cosh);
+	return sinh;
+}
+
+q_t qcsqrt(q_t n) { 
+	const q_t quarter = 1uLL << (BITS - 2); /* 0.25 */
+	q_t x = qadd(n, quarter), 
+	    y = qsub(n, quarter), 
+	    z = 0;
+	cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	return qmul(x, cordic_hyperbolic_scaling);
+}
+
+/********* CORDIC Routines ***************************************************/
+

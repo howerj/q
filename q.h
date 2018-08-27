@@ -101,6 +101,14 @@ q_t qtan(q_t theta);
 q_t qcot(q_t theta);
 
 q_t qatan(q_t t);
+q_t qsinh(q_t a);
+q_t qcosh(q_t a);
+q_t qtanh(q_t a);
+void qsincosh(q_t a, q_t *sinh, q_t *cosh);
+
+q_t qcsqrt(q_t a);       /* CORDIC testing only; do not use, a <= 2, a >= 0 */
+q_t qcmul(q_t a, q_t b); /* CORDIC testing only; do not use */
+q_t qcdiv(q_t a, q_t b); /* CORDIC testing only; do not use */
 
 d_t arshift(d_t v, unsigned p);
 long int strntol(const char *str, size_t length, const char **endptr, int base);
