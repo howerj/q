@@ -106,9 +106,11 @@ q_t qcosh(q_t a);
 q_t qtanh(q_t a);
 void qsincosh(q_t a, q_t *sinh, q_t *cosh);
 
-q_t qcsqrt(q_t a);       /* CORDIC testing only; do not use, a <= 2, a >= 0 */
-q_t qcmul(q_t a, q_t b); /* CORDIC testing only; do not use */
-q_t qcdiv(q_t a, q_t b); /* CORDIC testing only; do not use */
+q_t qcordic_ln(q_t d);         /* CORDIC testing only */
+q_t qcordic_exp(q_t e);        /* CORDIC testing only; useless for large values */
+q_t qcordic_sqrt(q_t a);       /* CORDIC testing only; do not use, a <= 2, a >= 0 */
+q_t qcordic_mul(q_t a, q_t b); /* CORDIC testing only; do not use */
+q_t qcordic_div(q_t a, q_t b); /* CORDIC testing only; do not use */
 
 d_t arshift(d_t v, unsigned p);
 long int strntol(const char *str, size_t length, const char **endptr, int base);

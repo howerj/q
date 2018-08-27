@@ -159,10 +159,10 @@ q_t qand(q_t a, q_t b)     { return a & b; }
 q_t qxor(q_t a, q_t b)     { return a ^ b; }
 q_t qor(q_t a, q_t b)      { return a | b; }
 q_t qinvert(q_t a)         { return ~a; }
-q_t qars(q_t a, q_t b)     { return arshift(a, qtoi(b)); }
 q_t qlrs(q_t a, q_t b)     { return (u_t)a >> (u_t)qtoi(b); }
 q_t qlls(q_t a, q_t b)     { return (u_t)a << b; }
-q_t qals(q_t a, q_t b)     { return (u_t)a << b; }
+q_t qars(q_t a, q_t b)     { return arshift(a, qtoi(b)); } /**@todo handle saturation/edge cases? */
+q_t qals(q_t a, q_t b)     { return (u_t)a << b; }         /**@todo handle saturation/edge cases? */
 
 /* <http://www.cplusplus.com/reference/cmath/round/>
 	value   round   floor   ceil    trunc
@@ -533,7 +533,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 	const size_t *shiftx = NULL, *shifty = NULL;
 	int hyperbolic = 0;
 
-	switch(coord) {
+	switch(coord) { /**@todo check this, it's probably buggy for linear/hyperbolic*/
 	case CORDIC_COORD_CIRCULAR_E:
 		lookup = arctans;
 		length = arctans_length;
@@ -702,13 +702,13 @@ q_t qcot(q_t theta) {
 
 /**@bug only works for small values, and not for all negative inputs, bounds
  * need to be worked out and the sign problem fixed. */
-q_t qcmul(q_t a, q_t b) { 
+q_t qcordic_mul(q_t a, q_t b) { 
 	q_t x = a, y = 0, z = b;
 	cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
 	return y;
 }
 
-q_t qcdiv(q_t a, q_t b) {
+q_t qcordic_div(q_t a, q_t b) {
 	q_t x = b, y = a, z = 0;
 	cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	return z;
@@ -739,7 +739,24 @@ q_t qsinh(q_t a) {
 	return sinh;
 }
 
-q_t qcsqrt(q_t n) { 
+/* See: 
+ * 	- <https://stackoverflow.com/questions/4657468/fast-fixed-point-pow-log-exp-and-sqrt>
+ * 	- <https://www.quinapalus.com/efunc.html> */
+
+q_t qcordic_exp(q_t e) { /**@todo replace with version that works for larger values */
+	q_t s = 0, h = 0;
+	qsincosh(e, &s, &h);
+	return qadd(s, h);
+}
+
+q_t qcordic_ln(q_t d) {
+	q_t x = qadd(d, qinfo.one), y = qsub(d, qinfo.one), z = 0;
+	cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	return qmul(z, qint(2));
+}
+
+/**@todo replace Newton Rhaphson method */
+q_t qcordic_sqrt(q_t n) {  /* testing only; works for 0 < x < 2 */
 	const q_t quarter = 1uLL << (BITS - 2); /* 0.25 */
 	q_t x = qadd(n, quarter), 
 	    y = qsub(n, quarter), 

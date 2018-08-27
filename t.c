@@ -41,8 +41,8 @@ static const function_t *lookup(char *op) {
 		{ .op.f = qadd,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "+" },
 		{ .op.f = qsub,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "-" },
 		{ .op.f = qmul,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "*" },
-		{ .op.f = qcmul,   .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "c*" },
-		{ .op.f = qcdiv,   .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "c/" },
+		{ .op.f = qcordic_mul, .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "c*" },
+		{ .op.f = qcordic_div, .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "c/" },
 		{ .op.f = qdiv,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "/" },
 		{ .op.f = qrem,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "rem" },
 		{ .op.f = qmin,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "min" },
@@ -64,6 +64,7 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qabs,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
 		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
+		{ .op.m = qcordic_exp, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_exp" },
 
 		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
@@ -77,7 +78,8 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qsinh,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sinh" },
 		{ .op.m = qcosh,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cosh" },
 		{ .op.m = qcot,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cot" },
-		{ .op.m = qcsqrt,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_sqrt" },
+		{ .op.m = qcordic_sqrt, .arity = 1,.type = FUNCTION_UNARY_ARITHMETIC_E, .name = "_sqrt" },
+		{ .op.m = qcordic_ln, .arity = 1,.type = FUNCTION_UNARY_ARITHMETIC_E, .name = "_ln" },
 
 		{ .op.p = qisinteger,  .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "int?" },
 		{ .op.p = qisnegative, .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "neg?" },
