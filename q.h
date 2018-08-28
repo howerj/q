@@ -8,6 +8,10 @@
 #ifndef Q_H
 #define Q_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -40,6 +44,7 @@ q_t qbound_wrap(ld_t s);     /**< over/underflow behavior, wrap around */
 typedef struct {
 	qbounds_t bound; /**< handles saturation when a number over or underflows */
 	int dp;          /**< decimal points to print, negative specifies maximum precision will allow */
+	unsigned base;   /**< base to use for numeric number conversion (0 = special base) */
 } qconf_t; /**< Q format configuration options */
 
 extern const qinfo_t qinfo; /**< information about the format and constants */
@@ -99,6 +104,7 @@ q_t qsin(q_t theta);
 q_t qcos(q_t theta);
 q_t qtan(q_t theta);
 q_t qcot(q_t theta);
+q_t qhypot(q_t a, q_t b);
 
 q_t qatan(q_t t);
 q_t qsinh(q_t a);
@@ -113,8 +119,11 @@ q_t qcordic_mul(q_t a, q_t b); /* CORDIC testing only; do not use */
 q_t qcordic_div(q_t a, q_t b); /* CORDIC testing only; do not use */
 
 d_t arshift(d_t v, unsigned p);
-long int strntol(const char *str, size_t length, const char **endptr, int base);
+long int strntol(const char *str, size_t length, const char **endptr, int *base, int *error, int *is_negative); /* rename? */
 int qpack(const q_t *q, char *buffer, size_t length);
 int qunpack(q_t *q, const char *buffer, size_t length);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

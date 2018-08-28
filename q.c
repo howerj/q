@@ -13,15 +13,18 @@
  * 	  - <https://rob.conery.io/2018/08/21/mod-and-remainder-are-not-the-same/>
  * 	- unit tests, built in ones
  * 	- optional conversion to floats (compile time switch)
- * 	- remove dependency on errno.h entirely, it might actually be
- * 	worth having a qerrno equivalent, this would need to be a thread
- * 	local variable.
  * 	- work out bounds for all functions, especially for CORDIC
  * 	functions
- * 	- degrees/radians conversion routines
+ * 	- degrees/radians, (optional) float to Q, Q16.16 to Q32.32, Q16.16 to Q8.8,
+ * 	Q16.16 to Q4.4, conversion routines
  * 	- GNUPlot scripts would help in visualizing results, and
  * 	errors, which can be calculated by comparing to comparing to
  * 	the C library.
+ * 	- C++ wrapper, tailored to C++.
+ * 	- Options, in the test library, for printing out ranges of functions,
+ * 	for calculating errors as compared with the built in C functions
+ * 	- Modes to generate the CORDIC tables
+ * 	- Functions for calculating gain at runtime for the CORDIC functions
  * NOTES:
  * 	- <https://en.wikipedia.org/wiki/Q_%28number_format%29>
  * 	- <https://www.mathworks.com/help/fixedpoint/examples/calculate-fixed-point-sine-and-cosine.html>
@@ -30,23 +33,17 @@
  * 	- <https://en.wikipedia.org/wiki/Modulo_operation>
  *
  * For a Q8.8 library it would be quite possible to do an exhaustive
- * proof of correctness over most expected properties.
- */
+ * proof of correctness over most expected properties. */
 
 #include "q.h"
 #include <stdbool.h>
 #include <assert.h>
-#include <errno.h>
 #include <ctype.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <string.h>
 
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
-
-typedef  int16_t hd_t; /* half Q width,      signed */
-typedef uint32_t  u_t; /* same width as Q, unsigned, but not in Q format */
-typedef uint64_t lu_t; /* double Q width,  unsigned */
 
 #define BITS  (16)
 #define MASK  ((1ULL <<  BITS) - 1ULL)
@@ -67,7 +64,19 @@ typedef uint64_t lu_t; /* double Q width,  unsigned */
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #endif
 
-#define QPI (0x3243Fl)
+#define QMK(HIGH, LOW, SF) ((ld_t)((((lu_t)HIGH) << BITS) | (MASK & ((((lu_t)LOW) << BITS) >> (SF)))))
+
+#define QPI (QMK(0x3, 0x243F, 16))
+
+typedef  int16_t hd_t; /* half Q width,      signed */
+typedef uint32_t  u_t; /* same width as Q, unsigned, but not in Q format */
+typedef uint64_t lu_t; /* double Q width,  unsigned */
+
+typedef enum {
+	NUMBER_INPUT_FAILED_E = -1,
+	NUMBER_INPUT_OK_E     =  0,
+	NUMBER_INPUT_RANGE_E  =  1,
+} number_input_error_e;
 
 const qinfo_t qinfo = {
 	.whole      = BITS,
@@ -78,18 +87,18 @@ const qinfo_t qinfo = {
 	.min  = (u_t)(HIGH << BITS),
 	.max  = (u_t)((HIGH << BITS) - 1uL),
 
-	/**@warning these constants are dependent on the bit width due to how they are defined */
-	.pi    = QPI /* 3.243F6 A8885 A308D 31319 8A2E0... */,
-	.e     = 0x2B7E1uL /* 2.B7E1 5162 8A... */ ,
-	.sqrt2 = 0x16A09uL /* 1.6A09 E667 F3... */ ,
-	.sqrt3 = 0x1BB67uL /* 1.BB67 AE85 84... */ ,
-	.ln2   = 0x0B172uL /* 0.B172 17F7 D1... */ ,
-	.ln10  = 0x24D76uL /* 2.4D76 3776 AA... */ ,
+	.pi    = QPI, /* 3.243F6 A8885 A308D 31319 8A2E0... */
+	.e     = QMK(0x2, 0xB7E1, 16), /* 2.B7E1 5162 8A... */ 
+	.sqrt2 = QMK(0x1, 0x6A09, 16), /* 1.6A09 E667 F3... */ 
+	.sqrt3 = QMK(0x1, 0xBB67, 16), /* 1.BB67 AE85 84... */
+	.ln2   = QMK(0x0, 0xB172, 16), /* 0.B172 17F7 D1... */
+	.ln10  = QMK(0x2, 0x4D76, 16), /* 2.4D76 3776 AA... */
 };
 
 qconf_t qconf = { /**@warning global configuration options */
 	.bound = qbound_saturate,
 	.dp    = 5,
+	.base  = 0, /**< @todo remove special case of '0' */
 };
 
 /********* Basic Library Routines ********************************************/
@@ -109,8 +118,7 @@ q_t qbound_wrap(ld_t s) { /**< wrap numbers */
 /*q_t qbound_exception(ld_t s) { (void)(s); exit(EXIT_FAILURE); }*/
 
 static inline q_t qsat(ld_t s) {
-	/*@todo more static assertions relating to min/max numbers, BITS and
-	 * MASK */
+	/*@todo more static assertions relating to min/max numbers, BITS and MASK */
 	BUILD_BUG_ON( sizeof(q_t) !=  sizeof(u_t));
 	BUILD_BUG_ON( sizeof(u_t) !=  sizeof(d_t));
 	BUILD_BUG_ON(sizeof(lu_t) !=  sizeof(ld_t));
@@ -126,8 +134,14 @@ inline d_t arshift(d_t v, unsigned p) {
 	u_t vn = v;
 	if(v >= 0)
 		return vn >> p;
-	const u_t mask = ((u_t)(-1L)) << ((sizeof(v)*CHAR_BIT) - p);
-	return mask | (vn >> p);
+	const u_t leading = ((u_t)(-1L)) << ((sizeof(v)*CHAR_BIT) - p);
+	return leading | (vn >> p);
+}
+
+inline d_t divn(d_t v, unsigned p) {
+	return v/(1<<p); /**@todo replace with portable bit shifting version */
+	/*const d_t m = -!!(v < 0);
+	return (v + (m & (((d_t)1 << p) + (d_t)-1UL))) >> p;*/
 }
 
 static inline u_t qhigh(const q_t q) { return ((u_t)q) >> BITS; }
@@ -198,6 +212,7 @@ q_t qround(q_t q) {
 	return negative ? qnegate(q) : q;
 }
 
+/* Pack/Unpack arrays might also be useful */
 int qpack(const q_t *q, char *buffer, size_t length) {
 	assert(buffer);
 	if(length < sizeof(*q))
@@ -226,7 +241,7 @@ int qunpack(q_t *q, const char *buffer, size_t length) {
 	return sizeof(*q);
 }
 
-q_t qmk(long integer, unsigned long fractional) {
+q_t qmk(long integer, unsigned long fractional) { /**@todo make this the same as the MACRO? */
 	const int negative = integer < 0;
 	integer = negative ? -integer : integer;
 	const q_t r = qcons((d_t)integer, fractional);
@@ -248,7 +263,7 @@ q_t qfma(q_t a, q_t b, q_t c) {
 	return qsat(ab + (ld_t)c);
 }
 
-q_t qdiv(q_t a, q_t b) {
+q_t qdiv(q_t a, q_t b) { /**< @todo add control of rounding modes */
 	ld_t dd = ((ld_t)a) << BITS;
 	const d_t bd2 = b / 2;
 	if((dd >= 0 && b >= 0) || (dd < 0 && b < 0)) {
@@ -322,17 +337,19 @@ int qsprint(q_t p, char *s, size_t length) { /**@todo different bases, clean thi
 	const int negative = qisnegative(p);
 	if(negative)
 		p = qnegate(p);
-	const u_t base = 10;
+	const u_t base = qconf.base ? qconf.base : 10; /* 0 as special case */
 	const d_t hi = qhigh(p);
 	char frac[BITS+1] = { '.' };
 	memset(s, 0, length);
+	if(base < 2 || base > 36)
+		return -1;
 	u_t lo = qlow(p);
 	size_t i = 1;
 	for(i = 1; lo; i++) {
 		if(qconf.dp >= 0 && (int)i >= qconf.dp) /**@todo proper rounding*/
 			break;
 		lo *= base;
-		frac[i] = '0' + (lo >> BITS);
+		frac[i] = '0' + (lo >> BITS); /**@bug not valid for all bases */
 		lo &= MASK;
 	}
 	if(negative)
@@ -358,14 +375,21 @@ static inline int extract(unsigned char c, int radix)
 	return -1;
 }
 
-long int strntol(const char *str, size_t length, const char **endptr, int base)
+/**@todo Remove '0x' prefix parsing? This removes the special cases, simplifies
+ * the code, removes nasty surprises and means octal handling does not have to
+ * be changes (is '0.5' octal or decimal when the base is '0', or is '00.5'
+ * octal?) */
+long int strntol(const char *str, size_t length, const char **endptr, int *base, int *error, int *is_negative)
 {
 	assert(str);
 	assert(endptr);
-	assert((base >= 2 && base <= 36) || !base);
+	assert(base);
+	assert(error);
+	assert(is_negative);
+	assert((*base >= 2 && *base <= 36) || !*base);
 	size_t i = 0;
-	bool negate = false, overflow = false, error = false;
-	unsigned long radix = base, r = 0;
+	bool negate = false, overflow = false, failed = false;
+	unsigned long radix = *base, r = 0;
 
 	for(; i < length && str[i]; i++) /* ignore leading white space */
 		if(!isspace(str[i]))
@@ -379,14 +403,13 @@ long int strntol(const char *str, size_t length, const char **endptr, int base)
 		i++;
 	}
 	if(i >= length) {
-		error = true;
+		failed = true;
 		goto end;
 	}
 
-	radix = base;
-	/* @bug 0 is a valid number, but is not '0x', set endptr and errno if
-	 * this happens */
-	if(!base || base == 16) { /* prefix 0 = octal, 0x or 0X = hex */
+	radix = *base;
+	/* @bug 0 is a valid number, but is not '0x', set endptr and 'error' if this happens */
+	if(!*base || *base == 16) { /* prefix 0 = octal, 0x or 0X = hex */
 		if(str[i] == '0') {
 			if(((i+1) < length) && (str[i + 1] == 'x' || str[i + 1] == 'X')) {
 				radix = 16;
@@ -396,7 +419,7 @@ long int strntol(const char *str, size_t length, const char **endptr, int base)
 				i++;
 			}
 		} else {
-			if(!base)
+			if(!*base)
 				radix = 10;
 		}
 	}
@@ -415,16 +438,24 @@ long int strntol(const char *str, size_t length, const char **endptr, int base)
 end:
 	i = MIN(i, length);
 	*endptr = &str[i];
-	if(error)
-		*endptr = str;
-	if(overflow) { /* result out of range, set errno to indicate this */
-		errno = ERANGE;
+	*base = radix;
+	*error = NUMBER_INPUT_OK_E;
+	if(overflow) { /* result out of range, set 'error' to indicate this */
+		*error = NUMBER_INPUT_RANGE_E;
 		r = LONG_MAX;
 		if(negate)
 			return LONG_MIN;
 	}
-	if(negate)
+	if(failed) {
+		*error = NUMBER_INPUT_FAILED_E;
+		*endptr = str;
+	}
+
+	*is_negative = false;
+	if(negate) {
 		r = -r;
+		*is_negative = true;
+	}
 	return r;
 }
 
@@ -434,36 +465,41 @@ end:
 int qnconv(q_t *q, char *s, size_t length) {
 	assert(q);
 	assert(s);
-	int r = 0;
+	int r = 0, base = qconf.base, error = NUMBER_INPUT_OK_E, is_negative = false;
 	u_t lo = 0, i = 0, j = 1;
-	long hi = 0, base = 10;
+	long hi = 0;
 	char frac[BITS+1] = { 0 };
 	memset(q, 0, sizeof *q);
 	const char *endptr = NULL;
-	errno = 0;
 	if(*s != '.') { /**@bug negative -0.X is not handled! */
-		hi = strntol(s, length, &endptr, base);
-		if(errno || endptr == s) /**@todo remove dependency on errno */
+		/**@todo handle negative and out of range cases */
+		hi = strntol(s, length, &endptr, &base, &error, &is_negative);
+		if(error < 0 || endptr == s)
 			return -1;
 		if(!(*endptr))
 			goto end;
 		if(*endptr != '.')
 			return -1;
+		if(hi == 0)
+			base = qconf.base;
 	} else {
 		endptr = s;
 	}
+	if(!base)
+		base = 10;
+
 	memcpy(frac, endptr + 1, MIN(sizeof(frac), length - (s - endptr)));
 	if(hi > DMAX || hi < DMIN)
 		return -1;
-	for(i = 0; frac[i]; i++) {
-		/* NB. Could eek out more precision by rounding next digit */
+	const long radix = base;
+	for(i = 0; frac[i]; i++) { /**@todo handle overflow */
 		if(i > 5) /*max 5 decimal digits in a 16-bit number: trunc((ln(MAX-VAL+1)/ln(base)) + 1) */
 			break;
-		const int ch = frac[i] - '0';
+		const int ch = frac[i] - '0'; /**@bug not valid for all bases */
 		if(ch < 0)
 			return -1;
-		lo = (lo * base) + ch;
-		j *= base;
+		lo = (lo * radix) + ch;
+		j *= radix;
 	}
 	lo = ((lo << BITS) / j);
 end:
@@ -485,20 +521,37 @@ typedef enum {
 } cordic_mode_e;
 
 typedef enum {
-	CORDIC_COORD_LINEAR_E,
-	CORDIC_COORD_CIRCULAR_E,
-	CORDIC_COORD_HYPERBOLIC_E,
+	CORDIC_COORD_HYPERBOLIC_E = -1,
+	CORDIC_COORD_LINEAR_E     =  0,
+	CORDIC_COORD_CIRCULAR_E   =  1,
 } cordic_coordinates_e;
 
 static const d_t cordic_circular_scaling   = 0x9B74; /* 1/scaling-factor */
 static const d_t cordic_hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
 
+/* Universal CORDIC <https://en.wikibooks.org/wiki/Digital_Circuits/CORDIC>
+ *
+ *	x(i+1) = x(i) - u.d(i).y(i).pow(2, -i)
+ * 	y(i+1) = y(i) +   d(i).x(i).pow(2, -i)
+ * 	z(i+1) = z(i) -   d(i).a(i)
+ * 
+ *  d(i) =  sgn(z(i))      (rotation)
+ *  d(i) = -sgn(x(i).y(i)) (vectoring)
+ *
+ *             hyperbolic      linear          circular
+ *  u =                -1           0                 1
+ *  a = atanh(pow(2, -i))  pow(2, -i)  atan(pow(2, -i))
+ */
 static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations, d_t *x0, d_t *y0, d_t *z0) {
 	assert(x0);
 	assert(y0);
 	assert(z0);
 	if(mode != CORDIC_MODE_VECTOR_E && mode != CORDIC_MODE_ROTATE_E)
 		return -1;
+
+	BUILD_BUG_ON(sizeof(d_t) != sizeof(uint32_t));
+	BUILD_BUG_ON(sizeof(u_t) != sizeof(uint32_t));
+
 
 	static const u_t arctans[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
 		0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL, 
@@ -518,7 +571,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 	};
 	static const size_t arctanhs_length = sizeof arctanhs / sizeof arctanhs[0];
 
-	static const u_t halfs[] = { /* */
+	static const u_t halfs[] = { /* 2^0, 2^-1, 2^-2, ..*/
 		0x10000uL,
 		0x8000uL, 0x4000uL, 0x2000uL, 0x1000uL,
 		0x0800uL, 0x0400uL, 0x0200uL, 0x0100uL,
@@ -570,10 +623,10 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 	for(; j < (unsigned)iterations; i++, j++) {
 		again:
 		{
-			const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -y;
-			const d_t  d =   -!!(m < 0);
-			const d_t xs = ((((shiftx ? arshift(y, *shiftx) : 0)) ^ d) - d);
-			const d_t ys = ((((shifty ? arshift(x, *shifty) : 0)) ^ d) - d);
+			const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -y /*-(qmul(y,x))*/;
+			const d_t  d =   -!!(m /*<=*/ < 0);
+			const d_t xs = ((((shiftx ? divn(y, *shiftx) : 0)) ^ d) - d);
+			const d_t ys =             (divn(x, *shifty)       ^ d) - d;
 			const d_t xn = x - (hyperbolic ? -xs : xs);
 			const d_t yn = y + ys;
 			const d_t zn = z - ((lookup[j] ^ d) - d);
@@ -592,7 +645,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 	*y0 = y;
 	*z0 = z;
 
-	return 0;
+	return iterations;
 }
 
 /* See: - <https://dspguru.com/dsp/faqs/cordic/>
@@ -601,14 +654,10 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	assert(sine);
 	assert(cosine);
 
-	static const q_t   pi =   QPI;
-	static const q_t  npi =  -QPI;
-	static const q_t  hpi =   QPI/2;
-	static const q_t hnpi = -(QPI/2);
-	static const q_t  qpi =   QPI/4;
-	static const q_t qnpi = -(QPI/4);
-	static const q_t  dpi =   QPI*2;
-	static const q_t dnpi = -(QPI*2);
+	static const q_t   pi =   QPI,    npi =  -QPI;
+	static const q_t  hpi =   QPI/2, hnpi = -(QPI/2);
+	static const q_t  qpi =   QPI/4, qnpi = -(QPI/4);
+	static const q_t  dpi =   QPI*2, dnpi = -(QPI*2);
 
 	/* convert to range -pi   to pi */
 	while(qless(theta, npi)) theta = qadd(theta,  dpi);
@@ -672,8 +721,10 @@ q_t qatan(q_t t) {
 }
 
 void qsincos(q_t theta, q_t *sine, q_t *cosine) {
+	assert(sine);
+	assert(cosine);
 	const int r = qcordic(theta, -1, sine, cosine);
-	assert(r == 0);
+	assert(r >= 0);
 }
 
 q_t qsin(q_t theta) {
@@ -691,32 +742,37 @@ q_t qcos(q_t theta) {
 q_t qtan(q_t theta) {
 	q_t sine = 0, cosine = 0;
 	qsincos(theta, &sine, &cosine);
-	return qdiv(sine, cosine); // @todo replace with CORDIC divide
+	return qdiv(sine, cosine); // @todo replace with CORDIC divide?
 }
 
 q_t qcot(q_t theta) {
 	q_t sine = 0, cosine = 0;
 	qsincos(theta, &sine, &cosine);
-	return qdiv(cosine, sine); // @todo replace with CORDIC divide
+	return qdiv(cosine, sine); // @todo replace with CORDIC divide?
 }
 
 /**@bug only works for small values, and not for all negative inputs, bounds
  * need to be worked out and the sign problem fixed. */
 q_t qcordic_mul(q_t a, q_t b) { 
 	q_t x = a, y = 0, z = b;
-	cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
+	const int r = cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
+	assert(r >= 0);
 	return y;
 }
 
 q_t qcordic_div(q_t a, q_t b) {
 	q_t x = b, y = a, z = 0;
-	cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	const int r = cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	assert(r >= 0);
 	return z;
 }
 
 void qsincosh(q_t a, q_t *sinh, q_t *cosh) {
+	assert(sinh);
+	assert(cosh);
 	q_t x = cordic_hyperbolic_scaling, y = 0, z = a; // (e^2x - 1) / (e^2x + 1)
-	cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
+	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
+	assert(r >= 0);
 	*sinh = y;
 	*cosh = x;
 }
@@ -751,8 +807,10 @@ q_t qcordic_exp(q_t e) { /**@todo replace with version that works for larger val
 
 q_t qcordic_ln(q_t d) {
 	q_t x = qadd(d, qinfo.one), y = qsub(d, qinfo.one), z = 0;
-	cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
-	return qmul(z, qint(2));
+	static const q_t two = QMK(2, 0, 16);
+	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	assert(r >= 0);
+	return qmul(z, two);
 }
 
 /**@todo replace Newton Rhaphson method */
@@ -761,8 +819,16 @@ q_t qcordic_sqrt(q_t n) {  /* testing only; works for 0 < x < 2 */
 	q_t x = qadd(n, quarter), 
 	    y = qsub(n, quarter), 
 	    z = 0;
-	cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	assert(r >= 0);
 	return qmul(x, cordic_hyperbolic_scaling);
+}
+
+q_t qhypot(q_t a, q_t b) {
+	q_t x = qabs(a), y = qabs(b), z = 0; /* abs() should not be needed? */
+	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	assert(r >= 0);
+	return qmul((x), cordic_circular_scaling);
 }
 
 /********* CORDIC Routines ***************************************************/

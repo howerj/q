@@ -1,3 +1,13 @@
+/**@file t.c
+ * @brief Q-Number (Q16.16, signed) library test bench
+ * @copyright Richard James Howe (2018)
+ * @license MIT
+ * @email howe.r.j.89@gmail.com
+ * @site <https://github.com/howerj/q> 
+ *
+ * This file contains a wrapper for testing the Q Number library,
+ * it includes a command processor and some built in tests. View
+ * the help string later on for more information */
 #include "q.h"
 #include "u.h"
 #include <assert.h>
@@ -55,6 +65,7 @@ static const function_t *lookup(char *op) {
 		{ .op.f = qlrs,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "rshift" },
 		{ .op.f = qals,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "alshift" },
 		{ .op.f = qlls,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "lshift" },
+		{ .op.f = qhypot,  .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "hypot" },
 
 		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
