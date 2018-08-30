@@ -76,6 +76,7 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
 		{ .op.m = qcordic_exp, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_exp" },
+		{ .op.m = qexp, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,      .name = "exp" },
 
 		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
@@ -91,6 +92,9 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qcot,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cot" },
 		{ .op.m = qcordic_sqrt, .arity = 1,.type = FUNCTION_UNARY_ARITHMETIC_E, .name = "_sqrt" },
 		{ .op.m = qcordic_ln, .arity = 1,.type = FUNCTION_UNARY_ARITHMETIC_E, .name = "_ln" },
+		{ .op.m = qlog,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E, .name = "log" },
+		{ .op.m = qdeg2rad, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E, .name = "deg2rad" },
+		{ .op.m = qrad2deg, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E, .name = "rad2deg" },
 
 		{ .op.p = qisinteger,  .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "int?" },
 		{ .op.p = qisnegative, .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,  .name = "neg?" },
@@ -130,7 +134,7 @@ static void printq(FILE *out, q_t q, const char *msg) {
 static void print_sincos(FILE *out, q_t theta) {
 	assert(out);
 	q_t sine  = qinfo.zero, cosine = qinfo.zero;
-	qcordic(theta, -1, &sine, &cosine);
+	qsincos(theta, &sine, &cosine);
 	qprint(out, theta);
 	fprintf(out, ",");
 	qprint(out, sine);
@@ -151,7 +155,9 @@ static void print_sincos_table(FILE *out) {
 }
 
 static void qinfo_print(FILE *out, const qinfo_t *qi) {
-	fprintf(out, "Q Info\n");
+	assert(out);
+	assert(qi);
+	fprintf(out, "Q%zu.%zu Info\n", qi->whole, qi->fractional);
 	printq(out, qi->bit,   "bit");
 	printq(out, qi->one,   "one");
 	printq(out, qi->zero,  "zero");
@@ -163,6 +169,23 @@ static void qinfo_print(FILE *out, const qinfo_t *qi) {
 	printq(out, qi->ln10,  "ln10");
 	printq(out, qi->min,   "min");
 	printq(out, qi->max,   "max");
+	printq(out, qcordic_circular_gain(-1),   "circular-gain");
+	printq(out, qcordic_hyperbolic_gain(-1), "hyperbolic-gain");
+}
+
+static void qconf_print(FILE *out, const qconf_t *qc) {
+	assert(out);
+	assert(qc);
+	fprintf(out, "Q Configuration\n");
+	const char *bounds = "unknown";
+	qbounds_t bound = qc->bound;
+	if(bound == qbound_saturate)
+		bounds = "saturate";
+	if(bound == qbound_wrap)
+		bounds = "wrap";
+	fprintf(out, "overflow handler: %s\n", bounds);
+	fprintf(out, "input/output radix: %u (0 = special case)\n", qc->base);
+	fprintf(out, "decimal places: %d\n", qc->dp);
 }
 
 static FILE *fopen_or_die(const char *file, const char *mode) {
@@ -178,12 +201,14 @@ static FILE *fopen_or_die(const char *file, const char *mode) {
 
 typedef enum {
 	EVAL_OK_E,
+	EVAL_COMMENT_E,
 	EVAL_ERROR_SCAN_E,
 	EVAL_ERROR_TYPE_E,
 	EVAL_ERROR_CONVERT_E,
 	EVAL_ERROR_OPERATION_E,
 	EVAL_ERROR_ARG_COUNT_E,
 	EVAL_ERROR_UNEXPECTED_RESULT_E,
+	EVAL_ERROR_LIMIT_MODE_E,
 
 	EVAL_ERROR_MAX_ERRORS_E, /**< not an error, but a count of errors */
 } eval_errors_e;
@@ -192,12 +217,14 @@ static const char *eval_error(int e) {
 	if(e < 0 || e >= EVAL_ERROR_MAX_ERRORS_E)
 		return "unknown";
 	const char *msgs[EVAL_ERROR_MAX_ERRORS_E] = {
-		[EVAL_OK_E]              = "ok?",
-		[EVAL_ERROR_SCAN_E]      = "invalid input line",
-		[EVAL_ERROR_TYPE_E]      = "unknown function type",
-		[EVAL_ERROR_CONVERT_E]   = "numeric conversion failed",
-		[EVAL_ERROR_OPERATION_E] = "unknown operation",
-		[EVAL_ERROR_ARG_COUNT_E] = "too few arguments",
+		[EVAL_OK_E]                      = "ok",
+		[EVAL_COMMENT_E]                 = "(comment)",
+		[EVAL_ERROR_SCAN_E]              = "invalid input line",
+		[EVAL_ERROR_TYPE_E]              = "unknown function type",
+		[EVAL_ERROR_CONVERT_E]           = "numeric conversion failed",
+		[EVAL_ERROR_OPERATION_E]         = "unknown operation",
+		[EVAL_ERROR_ARG_COUNT_E]         = "too few arguments",
+		[EVAL_ERROR_LIMIT_MODE_E]        = "unknown limit mode ('|' or '%' allowed)",
 		[EVAL_ERROR_UNEXPECTED_RESULT_E] = "unexpected result",
 	};
 	return msgs[e] ? msgs[e] : "unknown";
@@ -275,22 +302,32 @@ static int comment(char *line) {
 	return 0;
 }
 
-/**@todo allow saturation/wrapping mode changes */
+static void bounds_set(char method) {
+	assert(method == '|' || method == '%');
+	if(method == '|')
+		qconf.bound = qbound_saturate;
+	qconf.bound = qbound_wrap;
+}
+
 static int eval(char *line, q_t *result) {
 	assert(line);
 	assert(result);
 	*result = qinfo.zero;
 	if(comment(line))
-		return EVAL_OK_E;
+		return EVAL_COMMENT_E;
 	char operation[N] = { 0 }, expected[N] = { 0 }, bounds[N], arg1[N] = { 0 }, arg2[N] = { 0 };
-	const int count = sscanf(line, "%15s %15s +- %15s | %15s %15s", operation, expected, bounds, arg1, arg2);
-	if(count < 4)
+	char limit = '|';
+	const int count = sscanf(line, "%15s %15s +- %15s %c %15s %15s", operation, expected, bounds, &limit, arg1, arg2);
+	if(limit != '|' && limit != '%')
+		return -EVAL_ERROR_LIMIT_MODE_E;
+	bounds_set(limit);
+	if(count < 5)
 		return -EVAL_ERROR_SCAN_E;
 	const function_t *func = lookup(operation);
 	if(!func)
 		return -EVAL_ERROR_OPERATION_E;
 	q_t e = qinfo.zero, b = qinfo.zero, a1 = qinfo.zero, a2 = qinfo.zero;
-	const int argc = count - 3;
+	const int argc = count - 4;
 	if(func->arity != argc)
 		return -EVAL_ERROR_ARG_COUNT_E;
 	if(qconv(&e, expected) < 0)
@@ -342,6 +379,8 @@ static int eval_file(FILE *input, FILE *output) {
 	while(fgets(line, sizeof(line) - 1, input)) {
 		q_t result = 0;
 		const int r = eval(line, &result);
+		if(r == EVAL_COMMENT_E)
+			continue;
 		if(r < 0) {
 			const char *msg = eval_error(-r);
 			trim(line);
@@ -408,7 +447,7 @@ static int test_fma(void) {
 	return unit_test_finish();
 }
 
-static int internal_tests(void) {
+static int internal_tests(void) { /**@todo add more tests */
 	typedef int (*unit_test_t)(void);
 	unit_test_t tests[] = {
 		test_sanity,
@@ -482,6 +521,7 @@ int main(int argc, char **argv) {
 			ran = true;
 		} else if(!strcmp("-i", argv[i])) {
 			qinfo_print(stdout, &qinfo);
+			qconf_print(stdout, &qconf);
 			ran = true;
 		} else {
 			FILE *input = fopen_or_die(argv[i], "rb");

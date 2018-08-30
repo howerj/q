@@ -7,7 +7,7 @@
  *
  *  TODO:
  * 	- basic mathematical functions (arcsin, arccosine, hyperbolic
- * 	functions, ..., ln, log, pow, ...)
+ * 	functions, ..., ln, log, pow, rectangular to polar and inverse ...)
  * 	- add modulo *and* remainder
  * 	  - <https://news.ycombinator.com/item?id=17817758>
  * 	  - <https://rob.conery.io/2018/08/21/mod-and-remainder-are-not-the-same/>
@@ -25,6 +25,8 @@
  * 	for calculating errors as compared with the built in C functions
  * 	- Modes to generate the CORDIC tables
  * 	- Functions for calculating gain at runtime for the CORDIC functions
+ * 	- Assert inputs are in correct domain
+ * 	- Configuration options for different methods of evaluation; 
  * NOTES:
  * 	- <https://en.wikipedia.org/wiki/Q_%28number_format%29>
  * 	- <https://www.mathworks.com/help/fixedpoint/examples/calculate-fixed-point-sine-and-cosine.html>
@@ -65,7 +67,7 @@
 #endif
 
 #define QMK(HIGH, LOW, SF) ((ld_t)((((lu_t)HIGH) << BITS) | (MASK & ((((lu_t)LOW) << BITS) >> (SF)))))
-
+#define QINT(INT)          ((q_t)((u_t)(INT) << BITS))
 #define QPI (QMK(0x3, 0x243F, 16))
 
 typedef  int16_t hd_t; /* half Q width,      signed */
@@ -192,13 +194,13 @@ q_t qfloor(q_t q) {
 }
 
 q_t qceil(q_t q) {
-	const q_t adj = qisinteger(q) ? qinfo.zero : qinfo.one;
+	const q_t adj = qisinteger(q) ? QINT(0) : QINT(1);
 	q = qadd(q, adj);
 	return ((u_t)q) & (MASK << BITS);
 }
 
 q_t qtrunc(q_t q) {
-	const q_t adj = qisnegative(q) && qlow(q) ? qinfo.one : qinfo.zero;
+	const q_t adj = qisnegative(q) && qlow(q) ? QINT(1) : QINT(0);
 	q = qadd(q, adj);
 	return ((u_t)q) & (MASK << BITS);
 }
@@ -206,7 +208,7 @@ q_t qtrunc(q_t q) {
 q_t qround(q_t q) {
 	const int negative = qisnegative(q);
 	q = qabs(q);
-	const q_t adj = qlow(q) & HIGH ? qinfo.one : qinfo.zero;
+	const q_t adj = qlow(q) & HIGH ? QINT(1) : QINT(0);
 	q = qadd(q, adj);
 	q = ((u_t)q) & (MASK << BITS);
 	return negative ? qnegate(q) : q;
@@ -265,7 +267,7 @@ q_t qfma(q_t a, q_t b, q_t c) {
 
 q_t qdiv(q_t a, q_t b) { /**< @todo add control of rounding modes */
 	ld_t dd = ((ld_t)a) << BITS;
-	const d_t bd2 = b / 2;
+	const d_t bd2 = divn(b, 1);
 	if((dd >= 0 && b >= 0) || (dd < 0 && b < 0)) {
 		dd += bd2;
 	} else {
@@ -542,6 +544,10 @@ static const d_t cordic_hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
  *             hyperbolic      linear          circular
  *  u =                -1           0                 1
  *  a = atanh(pow(2, -i))  pow(2, -i)  atan(pow(2, -i))
+ *
+ *  linear shift sequence:      i = 0, 1, 2, 3, ...
+ *  circular shift sequence:    i = 1, 2, 3, 4, ...
+ *  hyperbolic shift sequence:  i = 1, 2, 3, 4, 4, 5, ...
  */
 static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations, d_t *x0, d_t *y0, d_t *z0) {
 	assert(x0);
@@ -634,7 +640,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 			y = yn; /*   sine, in circular, rotation mode   */
 			z = zn;
 		}
-		if(hyperbolic) {
+		if(hyperbolic) { /* correct? */
 			if(k++ >= 3) {
 				k = 0;
 				goto again;
@@ -650,7 +656,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 
 /* See: - <https://dspguru.com/dsp/faqs/cordic/>
  *      - <https://en.wikipedia.org/wiki/CORDIC> */
-int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
+static int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	assert(sine);
 	assert(cosine);
 
@@ -692,7 +698,6 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	//if(x < 0) 
 	//	x = -x;
 
-
 	/* undo shifting and quadrant changes */
 	if(shift > 0) {
 		const d_t yt = y;
@@ -715,7 +720,7 @@ int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 }
 
 q_t qatan(q_t t) {
-	q_t x = qint(1), y = t, z = 0;
+	q_t x = qint(1), y = t, z = QINT(0);
 	cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	return z;
 }
@@ -728,40 +733,38 @@ void qsincos(q_t theta, q_t *sine, q_t *cosine) {
 }
 
 q_t qsin(q_t theta) {
-	q_t sine = 0, cosine = 0;
+	q_t sine = QINT(0), cosine = QINT(0);
 	qsincos(theta, &sine, &cosine);
 	return sine;
 }
 
 q_t qcos(q_t theta) {
-	q_t sine = 0, cosine = 0;
+	q_t sine = QINT(0), cosine = QINT(0);
 	qsincos(theta, &sine, &cosine);
 	return cosine;
 }
 
 q_t qtan(q_t theta) {
-	q_t sine = 0, cosine = 0;
+	q_t sine = QINT(0), cosine = QINT(0);
 	qsincos(theta, &sine, &cosine);
 	return qdiv(sine, cosine); // @todo replace with CORDIC divide?
 }
 
 q_t qcot(q_t theta) {
-	q_t sine = 0, cosine = 0;
+	q_t sine = QINT(0), cosine = QINT(0);
 	qsincos(theta, &sine, &cosine);
 	return qdiv(cosine, sine); // @todo replace with CORDIC divide?
 }
 
-/**@bug only works for small values, and not for all negative inputs, bounds
- * need to be worked out and the sign problem fixed. */
-q_t qcordic_mul(q_t a, q_t b) { 
-	q_t x = a, y = 0, z = b;
+q_t qcordic_mul(q_t a, q_t b) { /* works for small values; result < 4 */
+	q_t x = a, y = QINT(0), z = b;
 	const int r = cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	return y;
 }
 
 q_t qcordic_div(q_t a, q_t b) {
-	q_t x = b, y = a, z = 0;
+	q_t x = b, y = a, z = QINT(0);
 	const int r = cordic(CORDIC_COORD_LINEAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	return z;
@@ -770,7 +773,7 @@ q_t qcordic_div(q_t a, q_t b) {
 void qsincosh(q_t a, q_t *sinh, q_t *cosh) {
 	assert(sinh);
 	assert(cosh);
-	q_t x = cordic_hyperbolic_scaling, y = 0, z = a; // (e^2x - 1) / (e^2x + 1)
+	q_t x = cordic_hyperbolic_scaling, y = QINT(0), z = a; // (e^2x - 1) / (e^2x + 1)
 	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	*sinh = y;
@@ -778,19 +781,19 @@ void qsincosh(q_t a, q_t *sinh, q_t *cosh) {
 }
 
 q_t qtanh(q_t a) { /**@todo test -1 once parser is fixed '-0.7615' is result */
-	q_t sinh = 0, cosh = 0;
+	q_t sinh = QINT(0), cosh = QINT(0);
 	qsincosh(a, &sinh, &cosh);
 	return qdiv(sinh, cosh);
 }
 
 q_t qcosh(q_t a) {
-	q_t sinh = 0, cosh = 0;
+	q_t sinh = QINT(0), cosh = QINT(0);
 	qsincosh(a, &sinh, &cosh);
 	return cosh;
 }
 
 q_t qsinh(q_t a) {
-	q_t sinh = 0, cosh = 0;
+	q_t sinh = QINT(0), cosh = QINT(0);
 	qsincosh(a, &sinh, &cosh);
 	return sinh;
 }
@@ -800,14 +803,14 @@ q_t qsinh(q_t a) {
  * 	- <https://www.quinapalus.com/efunc.html> */
 
 q_t qcordic_exp(q_t e) { /**@todo replace with version that works for larger values */
-	q_t s = 0, h = 0;
+	q_t s = QINT(0), h = QINT(0);
 	qsincosh(e, &s, &h);
 	return qadd(s, h);
 }
 
 q_t qcordic_ln(q_t d) {
-	q_t x = qadd(d, qinfo.one), y = qsub(d, qinfo.one), z = 0;
-	static const q_t two = QMK(2, 0, 16);
+	q_t x = qadd(d, QINT(1)), y = qsub(d, QINT(1)), z = QINT(0);
+	static const q_t two = QINT(2);
 	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	return qmul(z, two);
@@ -825,28 +828,53 @@ q_t qcordic_sqrt(q_t n) {  /* testing only; works for 0 < x < 2 */
 }
 
 q_t qhypot(q_t a, q_t b) {
-	q_t x = qabs(a), y = qabs(b), z = 0; /* abs() should not be needed? */
+	q_t x = qabs(a), y = qabs(b), z = QINT(0); /* abs() should not be needed? */
 	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	return qmul((x), cordic_circular_scaling);
 }
 
-/********* CORDIC Routines ***************************************************/
-/********* Power *************************************************************/
+void qpol2rec(q_t magnitude, q_t theta, q_t *i, q_t *j) {
+	assert(i);
+	assert(j);
+	q_t sin = QINT(0), cos = QINT(0);
+	qsincos(theta, &sin, &cos);
+	*i = qmul(sin, magnitude);
+	*j = qmul(cos, magnitude);
+}
 
-int isodd(long n) {
+void qrec2pol(q_t i, q_t j, q_t *magnitude, q_t *theta) { /**@bug Does not take into account signs of i && j! */
+	assert(magnitude);
+	assert(theta);
+	q_t x = qabs(i), y = qabs(j), z = QINT(0); /* abs() should not be needed? */
+	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	assert(r >= 0);
+	*magnitude = qmul((x), cordic_circular_scaling);
+	*theta = z;
+}
+
+q_t qcordic_hyperbolic_gain(int n) {
+	q_t x = QINT(1), y = QINT(0), z = QINT(0);
+	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_ROTATE_E, n, &x, &y, &z);
+	assert(r >= 0);
+	return x;
+}
+
+q_t qcordic_circular_gain(int n) {
+	q_t x = QINT(1), y = QINT(0), z = QINT(0);
+	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_ROTATE_E, n, &x, &y, &z);
+	assert(r >= 0);
+	return x;
+}
+
+/********* CORDIC Routines ***************************************************/
+/********* Power / Logarithms ************************************************/
+
+static int isodd(unsigned n) {
 	return n & 1;
 }
 
-/*long power(long b, unsigned e) {
-	if (e == 0)   return 1;
-	if (e == 1)   return b;
-	if (isodd(e)) return b*power(b*b, e>>1); // odd  b=b*(b^2)^e/2
-	return power(b*b, e>>1);                 // even b=(b^2)^e/2
-}*/
-
-/*https://stackoverflow.com/questions/101439/*/
-d_t ipower(d_t b, unsigned e) { 
+d_t dpower(d_t b, unsigned e) { /*https://stackoverflow.com/questions/101439/*/
     d_t result = 1;
     for (;;) {
         if (isodd(e))
@@ -859,4 +887,43 @@ d_t ipower(d_t b, unsigned e) {
     return result;
 }
 
+d_t dlog(d_t x, unsigned base) { /* rounds up, look at remainder to round down */
+	d_t b = 0;
+	assert(x && base > 1);
+	while((x /= (d_t)base)) /* can use >> for base that are powers of two */
+		b++;
+	return b;
+}
+
+q_t qlog(q_t x) {
+	assert(qmore(x, 0));
+	static const q_t lmax = QMK(9, 0x8000, 16); /* 9.5, lower limit needs checking */
+	if(qmore(x, lmax))
+		return qadd(qinfo.ln2, qlog(divn(x, 1)));
+	return qcordic_ln(x);
+}
+
+q_t qexp(q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
+	if(qless(e, QINT(1)))
+		return qcordic_exp(e);
+	const q_t ed2 = qexp(divn(e, 1));
+	return qmul(ed2, ed2);
+}
+
+/********* Power / Logarithms ************************************************/
+/********* Conversion Utilities **********************************************/
+
+static const q_t half_circle_degrees = QINT(180);
+
+q_t qdeg2rad(q_t deg) {
+	return qdiv(qmul(qinfo.pi, deg), half_circle_degrees);
+}
+
+q_t qrad2deg(q_t rad) {
+	return qdiv(qmul(half_circle_degrees, rad), qinfo.pi);
+}
+
+// long/int/q32.32/q8.8 conversion routines go here, if implemented
+
+/********* Conversion Utilities **********************************************/
 

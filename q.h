@@ -79,6 +79,8 @@ q_t qmul(q_t a, q_t b);
 q_t qdiv(q_t a, q_t b);
 q_t qrem(q_t a, q_t b);
 q_t qfma(q_t a, q_t b, q_t c);
+q_t qexp(q_t e);
+q_t qlog(q_t n);
 
 q_t qround(q_t q);
 q_t qceil(q_t q);
@@ -98,7 +100,6 @@ int qsprint(q_t p, char *s, size_t length);
 int qnconv(q_t *q, char *s, size_t length);
 int qconv(q_t *q, char *s);
 
-int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine);
 void qsincos(q_t theta, q_t *sine, q_t *cosine);
 q_t qsin(q_t theta);
 q_t qcos(q_t theta);
@@ -117,8 +118,16 @@ q_t qcordic_exp(q_t e);        /* CORDIC testing only; useless for large values 
 q_t qcordic_sqrt(q_t a);       /* CORDIC testing only; do not use, a <= 2, a >= 0 */
 q_t qcordic_mul(q_t a, q_t b); /* CORDIC testing only; do not use */
 q_t qcordic_div(q_t a, q_t b); /* CORDIC testing only; do not use */
+q_t qcordic_circular_gain(int n);
+q_t qcordic_hyperbolic_gain(int n);
+void qpol2rec(q_t magnitude, q_t theta, q_t *i, q_t *j);
+void qrec2pol(q_t i, q_t j, q_t *magnitude, q_t *theta);
 
-d_t ipower(d_t b, unsigned e);
+q_t qrad2deg(q_t rad);
+q_t qdeg2rad(q_t deg);
+
+d_t dpower(d_t b, unsigned e);
+d_t dlog(d_t n, unsigned base);
 d_t arshift(d_t v, unsigned p);
 long int strntol(const char *str, size_t length, const char **endptr, int *base, int *error, int *is_negative); /* rename? */
 int qpack(const q_t *q, char *buffer, size_t length);
