@@ -280,13 +280,14 @@ q_t qrem(q_t a, q_t b)
 	return qsub(a, qmul(qtrunc(div), b));
 }
 
-
-/*
-q_t qmod(q_t a, q_t b)
-{
-}
-
-*/
+/*q_t qmod(q_t a, q_t b) {
+	a = qabs(a);
+	b = qabs(b);
+	const q_t nb = qnegate(b);
+	while(qeqless(a, nb)) a = qadd(a, b);
+	while(qeqmore(a,  b)) a = qadd(a, nb);
+	return a;
+}*/
 
 /********* Basic Library Routines ********************************************/
 /********* Numeric Input/Output **********************************************/
@@ -339,7 +340,7 @@ int qsprint(q_t p, char *s, size_t length) { /**@todo different bases, clean thi
 		p = qnegate(p);
 	const u_t base = qconf.base ? qconf.base : 10; /* 0 as special case */
 	const d_t hi = qhigh(p);
-	char frac[BITS+1] = { '.' };
+	char frac[BITS+2] = { '.' };
 	memset(s, 0, length);
 	if(base < 2 || base > 36)
 		return -1;
@@ -551,7 +552,6 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 
 	BUILD_BUG_ON(sizeof(d_t) != sizeof(uint32_t));
 	BUILD_BUG_ON(sizeof(u_t) != sizeof(uint32_t));
-
 
 	static const u_t arctans[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
 		0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL, 
@@ -832,4 +832,31 @@ q_t qhypot(q_t a, q_t b) {
 }
 
 /********* CORDIC Routines ***************************************************/
+/********* Power *************************************************************/
+
+int isodd(long n) {
+	return n & 1;
+}
+
+/*long power(long b, unsigned e) {
+	if (e == 0)   return 1;
+	if (e == 1)   return b;
+	if (isodd(e)) return b*power(b*b, e>>1); // odd  b=b*(b^2)^e/2
+	return power(b*b, e>>1);                 // even b=(b^2)^e/2
+}*/
+
+/*https://stackoverflow.com/questions/101439/*/
+d_t ipower(d_t b, unsigned e) { 
+    d_t result = 1;
+    for (;;) {
+        if (isodd(e))
+            result *= b;
+        e >>= 1;
+        if (!e)
+            break;
+        b *= b;
+    }
+    return result;
+}
+
 

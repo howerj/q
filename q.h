@@ -118,6 +118,7 @@ q_t qcordic_sqrt(q_t a);       /* CORDIC testing only; do not use, a <= 2, a >= 
 q_t qcordic_mul(q_t a, q_t b); /* CORDIC testing only; do not use */
 q_t qcordic_div(q_t a, q_t b); /* CORDIC testing only; do not use */
 
+d_t ipower(d_t b, unsigned e);
 d_t arshift(d_t v, unsigned p);
 long int strntol(const char *str, size_t length, const char **endptr, int *base, int *error, int *is_negative); /* rename? */
 int qpack(const q_t *q, char *buffer, size_t length);
