@@ -77,6 +77,7 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
 		{ .op.m = qcordic_exp, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_exp" },
 		{ .op.m = qexp, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,      .name = "exp" },
+		{ .op.m = qsqrt, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,      .name = "sqrt" },
 
 		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },

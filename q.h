@@ -44,7 +44,7 @@ q_t qbound_wrap(ld_t s);     /**< over/underflow behavior, wrap around */
 typedef struct {
 	qbounds_t bound; /**< handles saturation when a number over or underflows */
 	int dp;          /**< decimal points to print, negative specifies maximum precision will allow */
-	unsigned base;   /**< base to use for numeric number conversion (0 = special base) */
+	unsigned base;   /**< base to use for numeric number conversion */
 } qconf_t; /**< Q format configuration options */
 
 extern const qinfo_t qinfo; /**< information about the format and constants */
@@ -65,7 +65,6 @@ int qunequal(q_t a, q_t b);
 
 int qtoi(q_t toi);
 q_t qint(int toq);
-q_t qmk(long integer, long unsigned fractional);
 
 q_t qnegate(q_t a);
 q_t qmin(q_t a, q_t b);
@@ -81,6 +80,7 @@ q_t qrem(q_t a, q_t b);
 q_t qfma(q_t a, q_t b, q_t c);
 q_t qexp(q_t e);
 q_t qlog(q_t n);
+q_t qsqrt(q_t x);
 
 q_t qround(q_t q);
 q_t qceil(q_t q);
@@ -129,7 +129,6 @@ q_t qdeg2rad(q_t deg);
 d_t dpower(d_t b, unsigned e);
 d_t dlog(d_t n, unsigned base);
 d_t arshift(d_t v, unsigned p);
-long int strntol(const char *str, size_t length, const char **endptr, int *base, int *error, int *is_negative); /* rename? */
 int qpack(const q_t *q, char *buffer, size_t length);
 int qunpack(q_t *q, const char *buffer, size_t length);
 

@@ -20,7 +20,8 @@ lib${TARGET}.a: q.o
 
 ${TARGET}: lib${TARGET}.a t.o
 
-cpp: cpp.cpp lib${TARGET}.a
+cpp: c.cpp lib${TARGET}.a
+	${CXX} ${CXFLAGS} $^ -o $@
 
 clean:
 	${RM} ${TARGET} cpp *.a *.o

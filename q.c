@@ -6,36 +6,22 @@
  * @site <https://github.com/howerj/q>
  *
  *  TODO:
- * 	- basic mathematical functions (arcsin, arccosine, hyperbolic
- * 	functions, ..., ln, log, pow, rectangular to polar and inverse ...)
+ * 	- basic mathematical functions (arcsin, arccosine, pow, ...)
  * 	- add modulo *and* remainder
  * 	  - <https://news.ycombinator.com/item?id=17817758>
  * 	  - <https://rob.conery.io/2018/08/21/mod-and-remainder-are-not-the-same/>
- * 	- unit tests, built in ones
- * 	- optional conversion to floats (compile time switch)
+ * 	- optional conversion to floats (compile time switch?)
  * 	- work out bounds for all functions, especially for CORDIC
  * 	functions
- * 	- degrees/radians, (optional) float to Q, Q16.16 to Q32.32, Q16.16 to Q8.8,
- * 	Q16.16 to Q4.4, conversion routines
  * 	- GNUPlot scripts would help in visualizing results, and
  * 	errors, which can be calculated by comparing to comparing to
  * 	the C library.
- * 	- C++ wrapper, tailored to C++.
- * 	- Options, in the test library, for printing out ranges of functions,
- * 	for calculating errors as compared with the built in C functions
- * 	- Modes to generate the CORDIC tables
  * 	- Functions for calculating gain at runtime for the CORDIC functions
- * 	- Assert inputs are in correct domain
+ * 	- Assert inputs are in correct domain, better unit tests
  * 	- Configuration options for different methods of evaluation; 
  * NOTES:
- * 	- <https://en.wikipedia.org/wiki/Q_%28number_format%29>
- * 	- <https://www.mathworks.com/help/fixedpoint/examples/calculate-fixed-point-sine-and-cosine.html>
- * 	- <http://www.coranac.com/2009/07/sines/>
- * 	- <https://stackoverflow.com/questions/4657468/fast-fixed-point-pow-log-exp-and-sqrt>
  * 	- <https://en.wikipedia.org/wiki/Modulo_operation>
- *
- * For a Q8.8 library it would be quite possible to do an exhaustive
- * proof of correctness over most expected properties. */
+ */
 
 #include "q.h"
 #include <stdbool.h>
@@ -74,6 +60,9 @@ typedef  int16_t hd_t; /* half Q width,      signed */
 typedef uint32_t  u_t; /* same width as Q, unsigned, but not in Q format */
 typedef uint64_t lu_t; /* double Q width,  unsigned */
 
+//#include <stdio.h>
+//#define return  return printf("%s:%d\n", __FILE__, __LINE__), 
+
 typedef enum {
 	NUMBER_INPUT_FAILED_E = -1,
 	NUMBER_INPUT_OK_E     =  0,
@@ -100,7 +89,7 @@ const qinfo_t qinfo = {
 qconf_t qconf = { /**@warning global configuration options */
 	.bound = qbound_saturate,
 	.dp    = 5,
-	.base  = 0, /**< @todo remove special case of '0' */
+	.base  = 10, /**< @todo remove special case of '0' */
 };
 
 /********* Basic Library Routines ********************************************/
@@ -111,7 +100,7 @@ q_t qbound_saturate(ld_t s) { /**< default saturation handler */
 	return DMIN;
 }
 
-q_t qbound_wrap(ld_t s) { /**< wrap numbers */
+q_t qbound_wrap(ld_t s) { /**< wrap numbers on overflow */
 	assert(s > DMAX || s < DMIN);
 	if(s > DMAX) return DMIN + (s % DMAX);
 	return DMAX - ((-s) % DMAX);
@@ -214,7 +203,6 @@ q_t qround(q_t q) {
 	return negative ? qnegate(q) : q;
 }
 
-/* Pack/Unpack arrays might also be useful */
 int qpack(const q_t *q, char *buffer, size_t length) {
 	assert(buffer);
 	if(length < sizeof(*q))
@@ -243,7 +231,7 @@ int qunpack(q_t *q, const char *buffer, size_t length) {
 	return sizeof(*q);
 }
 
-q_t qmk(long integer, unsigned long fractional) { /**@todo make this the same as the MACRO? */
+static q_t qmk(long integer, unsigned long fractional) { /**@todo make this the same as the MACRO? */
 	const int negative = integer < 0;
 	integer = negative ? -integer : integer;
 	const q_t r = qcons((d_t)integer, fractional);
@@ -311,8 +299,6 @@ static inline void swap(char *a, char *b) {
 
 static void reverse(char *s, size_t length) {
 	assert(s);
-	if(length <= 1)
-		return;
 	for(size_t i = 0; i < length/2; i++)
 		swap(&s[i], &s[length - i - 1]);
 }
@@ -382,7 +368,7 @@ static inline int extract(unsigned char c, int radix)
  * the code, removes nasty surprises and means octal handling does not have to
  * be changes (is '0.5' octal or decimal when the base is '0', or is '00.5'
  * octal?) */
-long int strntol(const char *str, size_t length, const char **endptr, int *base, int *error, int *is_negative)
+static long int strntol(const char *str, size_t length, const char **endptr, int *base, int *error, int *is_negative)
 {
 	assert(str);
 	assert(endptr);
@@ -640,7 +626,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 			y = yn; /*   sine, in circular, rotation mode   */
 			z = zn;
 		}
-		if(hyperbolic) { /* correct? */
+		if(hyperbolic) { /* @todo check correctness */
 			if(k++ >= 3) {
 				k = 0;
 				goto again;
@@ -816,7 +802,6 @@ q_t qcordic_ln(q_t d) {
 	return qmul(z, two);
 }
 
-/**@todo replace Newton Rhaphson method */
 q_t qcordic_sqrt(q_t n) {  /* testing only; works for 0 < x < 2 */
 	const q_t quarter = 1uLL << (BITS - 2); /* 0.25 */
 	q_t x = qadd(n, quarter), 
@@ -843,6 +828,7 @@ void qpol2rec(q_t magnitude, q_t theta, q_t *i, q_t *j) {
 	*j = qmul(cos, magnitude);
 }
 
+/**@todo fix this */
 void qrec2pol(q_t i, q_t j, q_t *magnitude, q_t *theta) { /**@bug Does not take into account signs of i && j! */
 	assert(magnitude);
 	assert(theta);
@@ -910,17 +896,26 @@ q_t qexp(q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
 	return qmul(ed2, ed2);
 }
 
+q_t qsqrt(q_t x) { /* Newton Rhaphson method */
+	assert(qeqmore(x, 0));
+	const q_t difference = qmore(x, QINT(100)) ? 0x0100 : 0x0010;
+	if(qequal(QINT(0), x))
+		return QINT(0);
+	q_t guess = qmore(x, qinfo.sqrt2) ? divn(x, 1) : QINT(1);
+	while(qmore(qabs(qsub(qmul(guess, guess), x)), difference)) 
+		guess = divn(qadd(qdiv(x, guess), guess), 1);
+	return qabs(guess); /* correct for overflow int very large numbers */
+}
+
 /********* Power / Logarithms ************************************************/
 /********* Conversion Utilities **********************************************/
 
-static const q_t half_circle_degrees = QINT(180);
-
 q_t qdeg2rad(q_t deg) {
-	return qdiv(qmul(qinfo.pi, deg), half_circle_degrees);
+	return qdiv(qmul(QPI, deg), QINT(180));
 }
 
 q_t qrad2deg(q_t rad) {
-	return qdiv(qmul(half_circle_degrees, rad), qinfo.pi);
+	return qdiv(qmul(QINT(180), rad), QPI);
 }
 
 // long/int/q32.32/q8.8 conversion routines go here, if implemented
