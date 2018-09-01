@@ -60,15 +60,6 @@ typedef  int16_t hd_t; /* half Q width,      signed */
 typedef uint32_t  u_t; /* same width as Q, unsigned, but not in Q format */
 typedef uint64_t lu_t; /* double Q width,  unsigned */
 
-//#include <stdio.h>
-//#define return  return printf("%s:%d\n", __FILE__, __LINE__), 
-
-typedef enum {
-	NUMBER_INPUT_FAILED_E = -1,
-	NUMBER_INPUT_OK_E     =  0,
-	NUMBER_INPUT_RANGE_E  =  1,
-} number_input_error_e;
-
 const qinfo_t qinfo = {
 	.whole      = BITS,
 	.fractional = BITS,
@@ -89,7 +80,7 @@ const qinfo_t qinfo = {
 qconf_t qconf = { /**@warning global configuration options */
 	.bound = qbound_saturate,
 	.dp    = 5,
-	.base  = 10, /**< @todo remove special case of '0' */
+	.base  = 10,
 };
 
 /********* Basic Library Routines ********************************************/
@@ -105,8 +96,6 @@ q_t qbound_wrap(ld_t s) { /**< wrap numbers on overflow */
 	if(s > DMAX) return DMIN + (s % DMAX);
 	return DMAX - ((-s) % DMAX);
 }
-
-/*q_t qbound_exception(ld_t s) { (void)(s); exit(EXIT_FAILURE); }*/
 
 static inline q_t qsat(ld_t s) {
 	/*@todo more static assertions relating to min/max numbers, BITS and MASK */
@@ -286,7 +275,7 @@ static char itoch(unsigned ch) {
 	assert(ch < 36);
 	if(ch <= 9)
 		return ch + '0';
-	return ch + 'a';
+	return ch + 'A';
 }
 
 static inline void swap(char *a, char *b) {
@@ -321,24 +310,23 @@ static int uprint(u_t p, char *s, size_t length, int base) {
 }
 
 /* <https://codereview.stackexchange.com/questions/109212> */
-int qsprint(q_t p, char *s, size_t length) { /**@todo different bases, clean this up */
+int qsprint(q_t p, char *s, size_t length) {
 	assert(s);
 	const int negative = qisnegative(p);
 	if(negative)
 		p = qnegate(p);
-	const u_t base = qconf.base ? qconf.base : 10; /* 0 as special case */
+	const u_t base = qconf.base;
 	const d_t hi = qhigh(p);
 	char frac[BITS+2] = { '.' };
 	memset(s, 0, length);
-	if(base < 2 || base > 36)
-		return -1;
+	assert(base >= 2 && base <= 36);
 	u_t lo = qlow(p);
 	size_t i = 1;
 	for(i = 1; lo; i++) {
-		if(qconf.dp >= 0 && (int)i >= qconf.dp) /**@todo proper rounding*/
+		if(qconf.dp >= 0 && (int)i >= qconf.dp)
 			break;
 		lo *= base;
-		frac[i] = '0' + (lo >> BITS); /**@bug not valid for all bases */
+		frac[i] = itoch(lo >> BITS);
 		lo &= MASK;
 	}
 	if(negative)
@@ -364,139 +352,61 @@ static inline int extract(unsigned char c, int radix)
 	return -1;
 }
 
-/**@todo Remove '0x' prefix parsing? This removes the special cases, simplifies
- * the code, removes nasty surprises and means octal handling does not have to
- * be changes (is '0.5' octal or decimal when the base is '0', or is '00.5'
- * octal?) */
-static long int strntol(const char *str, size_t length, const char **endptr, int *base, int *error, int *is_negative)
-{
-	assert(str);
-	assert(endptr);
-	assert(base);
-	assert(error);
-	assert(is_negative);
-	assert((*base >= 2 && *base <= 36) || !*base);
-	size_t i = 0;
-	bool negate = false, overflow = false, failed = false;
-	unsigned long radix = *base, r = 0;
-
-	for(; i < length && str[i]; i++) /* ignore leading white space */
-		if(!isspace(str[i]))
-			break;
-	if(i >= length)
-		goto end;
-
-	if(str[i] == '-' || str[i] == '+') { /* Optional '+', and '-' for negative */
-		if(str[i] == '-')
-			negate = true;
-		i++;
-	}
-	if(i >= length) {
-		failed = true;
-		goto end;
-	}
-
-	radix = *base;
-	/* @bug 0 is a valid number, but is not '0x', set endptr and 'error' if this happens */
-	if(!*base || *base == 16) { /* prefix 0 = octal, 0x or 0X = hex */
-		if(str[i] == '0') {
-			if(((i+1) < length) && (str[i + 1] == 'x' || str[i + 1] == 'X')) {
-				radix = 16;
-				i += 2;
-			} else {
-				radix = 8;
-				i++;
-			}
-		} else {
-			if(!*base)
-				radix = 10;
-		}
-	}
-	if(i >= length)
-		goto end;
-
-	for(; i < length && str[i]; i++) {
-		int e = extract(str[i], radix);
-		if(e < 0)
-			break;
-		unsigned long a = e;
-		r = (r*radix) + a;
-		if(r > LONG_MAX) /* continue on with conversion */
-			overflow = true;
-	}
-end:
-	i = MIN(i, length);
-	*endptr = &str[i];
-	*base = radix;
-	*error = NUMBER_INPUT_OK_E;
-	if(overflow) { /* result out of range, set 'error' to indicate this */
-		*error = NUMBER_INPUT_RANGE_E;
-		r = LONG_MAX;
-		if(negate)
-			return LONG_MIN;
-	}
-	if(failed) {
-		*error = NUMBER_INPUT_FAILED_E;
-		*endptr = str;
-	}
-
-	*is_negative = false;
-	if(negate) {
-		r = -r;
-		*is_negative = true;
-	}
-	return r;
-}
-
-/**@bug all allowed formats are not implemented
- * Allowed example numbers; 2.0 -3 +0x5.Af -0377.77 1 0
- * @todo clean this all up, it's a giant mess */
-int qnconv(q_t *q, char *s, size_t length) {
+int qnconv(q_t *q, const char *s, size_t length) {
 	assert(q);
 	assert(s);
-	int r = 0, base = qconf.base, error = NUMBER_INPUT_OK_E, is_negative = false;
-	u_t lo = 0, i = 0, j = 1;
-	long hi = 0;
-	char frac[BITS+1] = { 0 };
-	memset(q, 0, sizeof *q);
-	const char *endptr = NULL;
-	if(*s != '.') { /**@bug negative -0.X is not handled! */
-		/**@todo handle negative and out of range cases */
-		hi = strntol(s, length, &endptr, &base, &error, &is_negative);
-		if(error < 0 || endptr == s)
-			return -1;
-		if(!(*endptr))
-			goto end;
-		if(*endptr != '.')
-			return -1;
-		if(hi == 0)
-			base = qconf.base;
-	} else {
-		endptr = s;
-	}
-	if(!base)
-		base = 10;
-
-	memcpy(frac, endptr + 1, MIN(sizeof(frac), length - (s - endptr)));
-	if(hi > DMAX || hi < DMIN)
+	*q = QINT(0);
+	if(length < 1)
 		return -1;
-	const long radix = base;
-	for(i = 0; frac[i]; i++) { /**@todo handle overflow */
-		if(i > 5) /*max 5 decimal digits in a 16-bit number: trunc((ln(MAX-VAL+1)/ln(base)) + 1) */
-			break;
-		const int ch = frac[i] - '0'; /**@bug not valid for all bases */
-		if(ch < 0)
+	const long base = qconf.base, idp = qconf.dp;
+	long hi = 0, lo = 0, places = 1, negative = 0, overflow = 0;
+	size_t sidx = 0;
+	assert(base >= 2 && base <= 36);
+
+	if(s[sidx] == '-') {
+		if(length < 2)
 			return -1;
-		lo = (lo * radix) + ch;
-		j *= radix;
+		negative = 1;
+		sidx++;
 	}
-	lo = ((lo << BITS) / j);
-end:
-	*q = qmk(hi, lo);
-	return r;
+
+	for(; sidx < length && s[sidx]; sidx++) {
+		const long e = extract(s[sidx], base);
+		if(e < 0)
+			break;
+		hi = (hi * base) + e;
+		if(hi > DMAX) /* continue on with conversion */
+			overflow = 1;
+	}
+	if(sidx >= length || !s[sidx])
+		goto done;
+	if(s[sidx] != '.')
+		return -2;
+	sidx++;
+	
+	for(int dp = 0; sidx < length && s[sidx]; sidx++, dp++) {
+		const int ch = extract(s[sidx], base);
+		if(ch < 0)
+			return -3;
+		if(dp <= idp) { /* continue on with conversion */
+			lo = (lo * base) + ch;
+			places *= base; /**@bug overflow! */
+		}
+	}
+	if(!places)
+		return -4;
+	lo = ((long)((unsigned long)lo << BITS) / places);
+done:
+	{
+		const q_t nq = qmk(hi, lo);
+		*q = negative ? qnegate(nq) : nq;
+	}
+	if(overflow)
+		return -5;
+	return 0;
 }
 
-int qconv(q_t *q, char *s) {
+int qconv(q_t *q, const char * const s) {
 	assert(s);
 	return qnconv(q, s, strlen(s));
 }
@@ -505,8 +415,8 @@ int qconv(q_t *q, char *s) {
 /********* CORDIC Routines ***************************************************/
 
 typedef enum {
-	CORDIC_MODE_VECTOR_E,
-	CORDIC_MODE_ROTATE_E,
+	CORDIC_MODE_VECTOR_E/* = 'VECT'*/,
+	CORDIC_MODE_ROTATE_E/* = 'ROT'*/,
 } cordic_mode_e;
 
 typedef enum {
@@ -766,7 +676,7 @@ void qsincosh(q_t a, q_t *sinh, q_t *cosh) {
 	*cosh = x;
 }
 
-q_t qtanh(q_t a) { /**@todo test -1 once parser is fixed '-0.7615' is result */
+q_t qtanh(q_t a) {
 	q_t sinh = QINT(0), cosh = QINT(0);
 	qsincosh(a, &sinh, &cosh);
 	return qdiv(sinh, cosh);

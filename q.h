@@ -97,8 +97,8 @@ q_t qlls(q_t a, q_t b);
 q_t qals(q_t a, q_t b);
 
 int qsprint(q_t p, char *s, size_t length);
-int qnconv(q_t *q, char *s, size_t length);
-int qconv(q_t *q, char *s);
+int qnconv(q_t *q, const char *s, size_t length);
+int qconv(q_t *q, const char *s);
 
 void qsincos(q_t theta, q_t *sine, q_t *cosine);
 q_t qsin(q_t theta);
