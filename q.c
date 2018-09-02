@@ -16,9 +16,8 @@
  * 	- GNUPlot scripts would help in visualizing results, and
  * 	errors, which can be calculated by comparing to comparing to
  * 	the C library.
- * 	- Functions for calculating gain at runtime for the CORDIC functions
  * 	- Assert inputs are in correct domain, better unit tests
- * 	- Configuration options for different methods of evaluation; 
+ * 	- Configuration options for different methods of evaluation;
  * NOTES:
  * 	- <https://en.wikipedia.org/wiki/Modulo_operation>
  */
@@ -32,11 +31,13 @@
 #include <string.h>
 
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
+#define IMPLIES(X, Y)           (!(X) || (Y))
 
 #define BITS  (16)
 #define MASK  ((1ULL <<  BITS) - 1ULL)
 #define HIGH   (1ULL << (BITS  - 1ULL))
 
+#define MULTIPLIER (INT16_MAX)
 #define UMAX  (UINT32_MAX)
 #define DMIN  (INT32_MIN)
 #define DMAX  (INT32_MAX)
@@ -70,14 +71,14 @@ const qinfo_t qinfo = {
 	.max  = (u_t)((HIGH << BITS) - 1uL),
 
 	.pi    = QPI, /* 3.243F6 A8885 A308D 31319 8A2E0... */
-	.e     = QMK(0x2, 0xB7E1, 16), /* 2.B7E1 5162 8A... */ 
-	.sqrt2 = QMK(0x1, 0x6A09, 16), /* 1.6A09 E667 F3... */ 
+	.e     = QMK(0x2, 0xB7E1, 16), /* 2.B7E1 5162 8A... */
+	.sqrt2 = QMK(0x1, 0x6A09, 16), /* 1.6A09 E667 F3... */
 	.sqrt3 = QMK(0x1, 0xBB67, 16), /* 1.BB67 AE85 84... */
 	.ln2   = QMK(0x0, 0xB172, 16), /* 0.B172 17F7 D1... */
 	.ln10  = QMK(0x2, 0x4D76, 16), /* 2.4D76 3776 AA... */
 };
 
-qconf_t qconf = { /**@warning global configuration options */
+qconf_t qconf = { /* Global Configuration Options */
 	.bound = qbound_saturate,
 	.dp    = 5,
 	.base  = 10,
@@ -120,55 +121,47 @@ inline d_t arshift(d_t v, unsigned p) {
 
 inline d_t divn(d_t v, unsigned p) {
 	return v/(1<<p); /**@todo replace with portable bit shifting version */
-	/*const d_t m = -!!(v < 0);
-	return (v + (m & (((d_t)1 << p) + (d_t)-1UL))) >> p;*/
+	///*const d_t m = -!!(v < 0);
+	//return (v + (m & (((d_t)1 << p) + (d_t)-1UL))) >> p;*/
 }
 
 static inline u_t qhigh(const q_t q) { return ((u_t)q) >> BITS; }
 static inline u_t qlow(const q_t q)  { return ((u_t)q) & MASK; }
 static inline q_t qcons(const u_t hi, const u_t lo) { return (hi << BITS) | (lo & MASK); }
 
-int qisnegative(q_t a)     { return !!(qhigh(a) & HIGH); }
-int qispositive(q_t a)     { return  !(qhigh(a) & HIGH); }
-int qisinteger(q_t a)      { return  !qlow(a); }
-int qisodd(q_t a)          { return qisinteger(a) &&  (qhigh(a) & 1); }
-int qiseven(q_t a)         { return qisinteger(a) && !(qhigh(a) & 1); }
-int qless(q_t a, q_t b)    { return a < b; }
-int qeqless(q_t a, q_t b)  { return a <= b; }
-int qmore(q_t a, q_t b)    { return a > b; }
-int qeqmore(q_t a, q_t b)  { return a >= b; }
-int qequal(q_t a, q_t b)   { return a == b; }
-int qunequal(q_t a, q_t b) { return a != b; }
-int qtoi(q_t toi)          { return ((u_t)toi) >> BITS; /**@bug sizeof(int) > sizeof(q_t) */ }
-q_t qint(int toq)          { return ((u_t)((d_t)toq)) << BITS; }
-q_t qnegate(q_t a)         { return (~(u_t)a) + 1ULL; }
-q_t qmin(q_t a, q_t b)     { return qless(a, b) ? a : b; }
-q_t qmax(q_t a, q_t b)     { return qmore(a, b) ? a : b; }
-q_t qabs(q_t a)            { return qisnegative(a) ? qnegate(a) : a; }
-q_t qadd(q_t a, q_t b)     { return qsat((ld_t)a + (ld_t)b); }
-q_t qsub(q_t a, q_t b)     { return qsat((ld_t)a - (ld_t)b); }
+int qisnegative(q_t a)      { return !!(qhigh(a) & HIGH); }
+int qispositive(q_t a)      { return  !(qhigh(a) & HIGH); }
+int qisinteger(q_t a)       { return  !qlow(a); }
+int qisodd(q_t a)           { return qisinteger(a) &&  (qhigh(a) & 1); }
+int qiseven(q_t a)          { return qisinteger(a) && !(qhigh(a) & 1); }
+int qless(q_t a, q_t b)     { return a < b; }
+int qeqless(q_t a, q_t b)   { return a <= b; }
+int qmore(q_t a, q_t b)     { return a > b; }
+int qeqmore(q_t a, q_t b)   { return a >= b; }
+int qequal(q_t a, q_t b)    { return a == b; }
+int qunequal(q_t a, q_t b)  { return a != b; }
+int qtoi(q_t toi)           { return ((lu_t)((ld_t)toi)) >> BITS; }
+q_t qint(int toq)           { return ((u_t)((d_t)toq)) << BITS; }
+q_t qnegate(q_t a)          { return (~(u_t)a) + 1ULL; }
+q_t qmin(q_t a, q_t b)      { return qless(a, b) ? a : b; }
+q_t qmax(q_t a, q_t b)      { return qmore(a, b) ? a : b; }
+q_t qabs(q_t a)             { return qisnegative(a) ? qnegate(a) : a; }
+q_t qadd(q_t a, q_t b)      { return qsat((ld_t)a + (ld_t)b); }
+q_t qsub(q_t a, q_t b)      { return qsat((ld_t)a - (ld_t)b); }
 q_t qcopysign(q_t a, q_t b) { return qisnegative(b) ? qnegate(qabs(a)) : qabs(a); }
+q_t qand(q_t a, q_t b)      { return a & b; }
+q_t qxor(q_t a, q_t b)      { return a ^ b; }
+q_t qor(q_t a, q_t b)       { return a | b; }
+q_t qinvert(q_t a)          { return ~a; }
+q_t qlrs(q_t a, q_t b)      { return (u_t)a >> (u_t)qtoi(b); }
+q_t qlls(q_t a, q_t b)      { return (u_t)a << b; }
+q_t qars(q_t a, q_t b)      { return arshift(a, qtoi(b)); }
+q_t qals(q_t a, q_t b)      { return qsat((lu_t)a << b); }
+q_t qsign(q_t a)            { return qisnegative(a) ? -QINT(1) : QINT(1); }
+q_t qsignum(q_t a)          { return a ? qsign(a) : QINT(0); }
 
-q_t qand(q_t a, q_t b)     { return a & b; }
-q_t qxor(q_t a, q_t b)     { return a ^ b; }
-q_t qor(q_t a, q_t b)      { return a | b; }
-q_t qinvert(q_t a)         { return ~a; }
-q_t qlrs(q_t a, q_t b)     { return (u_t)a >> (u_t)qtoi(b); }
-q_t qlls(q_t a, q_t b)     { return (u_t)a << b; }
-q_t qars(q_t a, q_t b)     { return arshift(a, qtoi(b)); } /**@todo handle saturation/edge cases? */
-q_t qals(q_t a, q_t b)     { return (u_t)a << b; }         /**@todo handle saturation/edge cases? */
-
-/* <http://www.cplusplus.com/reference/cmath/round/>
-	value   round   floor   ceil    trunc
-	-----   -----   -----   ----    -----
-	 2.3     2.0     2.0     3.0     2.0
-	 3.8     4.0     3.0     4.0     3.0
-	 5.5     6.0     5.0     6.0     5.0
-	-2.3    -2.0    -3.0    -2.0    -2.0
-	-3.8    -4.0    -4.0    -3.0    -3.0
-	-5.5    -6.0    -6.0    -5.0    -5.0 */
-q_t qfloor(q_t q) { 
-	return q & ~MASK; 
+q_t qfloor(q_t q) {
+	return q & ~MASK;
 }
 
 q_t qceil(q_t q) {
@@ -220,13 +213,6 @@ int qunpack(q_t *q, const char *buffer, size_t length) {
 	return sizeof(*q);
 }
 
-static q_t qmk(long integer, unsigned long fractional) { /**@todo make this the same as the MACRO? */
-	const int negative = integer < 0;
-	integer = negative ? -integer : integer;
-	const q_t r = qcons((d_t)integer, fractional);
-	return negative ? qnegate(r) : r;
-}
-
 static inline ld_t multiply(q_t a, q_t b) {
 	const ld_t dd = ((ld_t)a * (ld_t)b) + (lu_t)HIGH;
 	/* NB. portable version of "dd >> BITS", for double width signed values */
@@ -238,25 +224,19 @@ q_t qmul(q_t a, q_t b) {
 }
 
 q_t qfma(q_t a, q_t b, q_t c) {
-	const ld_t ab = multiply(a, b);
-	return qsat(ab + (ld_t)c);
+	return qsat(multiply(a, b) + (ld_t)c);
 }
 
-q_t qdiv(q_t a, q_t b) { /**< @todo add control of rounding modes */
-	ld_t dd = ((ld_t)a) << BITS;
-	const d_t bd2 = divn(b, 1);
-	if((dd >= 0 && b >= 0) || (dd < 0 && b < 0)) {
-		dd += bd2;
-	} else {
-		dd -= bd2;
-	}
-	return dd / b;
+q_t qdiv(q_t a, q_t b) {
+	const ld_t dd = ((ld_t)a) << BITS;
+	ld_t bd2 = divn(b, 1);
+	if(!((dd >= 0 && b >= 0) || (dd < 0 && b < 0)))
+		bd2 = -bd2;
+	return (dd + bd2) / b;
 }
 
-q_t qrem(q_t a, q_t b)
-{
-	const q_t div = qdiv(a, b);
-	return qsub(a, qmul(qtrunc(div), b));
+q_t qrem(q_t a, q_t b) {
+	return qsub(a, qmul(qtrunc(qdiv(a, b)), b));
 }
 
 /*q_t qmod(q_t a, q_t b) {
@@ -352,6 +332,13 @@ static inline int extract(unsigned char c, int radix)
 	return -1;
 }
 
+static inline q_t qmk(long integer, unsigned long fractional) {
+	const int negative = integer < 0;
+	integer = negative ? -integer : integer;
+	const q_t r = qcons((d_t)integer, fractional);
+	return negative ? qnegate(r) : r;
+}
+
 int qnconv(q_t *q, const char *s, size_t length) {
 	assert(q);
 	assert(s);
@@ -375,7 +362,7 @@ int qnconv(q_t *q, const char *s, size_t length) {
 		if(e < 0)
 			break;
 		hi = (hi * base) + e;
-		if(hi > DMAX) /* continue on with conversion */
+		if(hi > MULTIPLIER) /* continue on with conversion */
 			overflow = 1;
 	}
 	if(sidx >= length || !s[sidx])
@@ -390,11 +377,13 @@ int qnconv(q_t *q, const char *s, size_t length) {
 			return -3;
 		if(dp <= idp) { /* continue on with conversion */
 			lo = (lo * base) + ch;
-			places *= base; /**@bug overflow! */
+			if(places > (DMAX/base))
+				return -4;
+			places *= base;
 		}
 	}
 	if(!places)
-		return -4;
+		return -5;
 	lo = ((long)((unsigned long)lo << BITS) / places);
 done:
 	{
@@ -402,7 +391,7 @@ done:
 		*q = negative ? qnegate(nq) : nq;
 	}
 	if(overflow)
-		return -5;
+		return -6;
 	return 0;
 }
 
@@ -433,7 +422,7 @@ static const d_t cordic_hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
  *	x(i+1) = x(i) - u.d(i).y(i).pow(2, -i)
  * 	y(i+1) = y(i) +   d(i).x(i).pow(2, -i)
  * 	z(i+1) = z(i) -   d(i).a(i)
- * 
+ *
  *  d(i) =  sgn(z(i))      (rotation)
  *  d(i) = -sgn(x(i).y(i)) (vectoring)
  *
@@ -443,8 +432,7 @@ static const d_t cordic_hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
  *
  *  linear shift sequence:      i = 0, 1, 2, 3, ...
  *  circular shift sequence:    i = 1, 2, 3, 4, ...
- *  hyperbolic shift sequence:  i = 1, 2, 3, 4, 4, 5, ...
- */
+ *  hyperbolic shift sequence:  i = 1, 2, 3, 4, 4, 5, ... */
 static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations, d_t *x0, d_t *y0, d_t *z0) {
 	assert(x0);
 	assert(y0);
@@ -456,10 +444,10 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 	BUILD_BUG_ON(sizeof(u_t) != sizeof(uint32_t));
 
 	static const u_t arctans[] = { /* atan(2^0), atan(2^-1), atan(2^-2), ... */
-		0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL, 
-		0x0FFAuL, 0x07FFuL, 0x03FFuL, 0x01FFuL, 
-		0x00FFuL, 0x007FuL, 0x003FuL, 0x001FuL, 
-		0x000FuL, 0x0007uL, 0x0003uL, 0x0001uL, 
+		0xC90FuL, 0x76B1uL, 0x3EB6uL, 0x1FD5uL,
+		0x0FFAuL, 0x07FFuL, 0x03FFuL, 0x01FFuL,
+		0x00FFuL, 0x007FuL, 0x003FuL, 0x001FuL,
+		0x000FuL, 0x0007uL, 0x0003uL, 0x0001uL,
 		0x0000uL, // 0x0000uL,
 	};
 	static const size_t arctans_length = sizeof arctans / sizeof arctans[0];
@@ -536,7 +524,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 			y = yn; /*   sine, in circular, rotation mode   */
 			z = zn;
 		}
-		if(hyperbolic) { /* @todo check correctness */
+		if(hyperbolic) {
 			if(k++ >= 3) {
 				k = 0;
 				goto again;
@@ -590,9 +578,6 @@ static int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	/* CORDIC in Q2.16 format */
 	if(cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_ROTATE_E, iterations, &x, &y, &z) < 0)
 		return -1;
-	/* correct overflow in cosine */
-	//if(x < 0) 
-	//	x = -x;
 
 	/* undo shifting and quadrant changes */
 	if(shift > 0) {
@@ -643,13 +628,13 @@ q_t qcos(q_t theta) {
 q_t qtan(q_t theta) {
 	q_t sine = QINT(0), cosine = QINT(0);
 	qsincos(theta, &sine, &cosine);
-	return qdiv(sine, cosine); // @todo replace with CORDIC divide?
+	return qdiv(sine, cosine); /* can use qcordic_div, with range limits it imposes */
 }
 
 q_t qcot(q_t theta) {
 	q_t sine = QINT(0), cosine = QINT(0);
 	qsincos(theta, &sine, &cosine);
-	return qdiv(cosine, sine); // @todo replace with CORDIC divide?
+	return qdiv(cosine, sine); /* can use qcordic_div, with range limits it imposes */
 }
 
 q_t qcordic_mul(q_t a, q_t b) { /* works for small values; result < 4 */
@@ -694,11 +679,7 @@ q_t qsinh(q_t a) {
 	return sinh;
 }
 
-/* See: 
- * 	- <https://stackoverflow.com/questions/4657468/fast-fixed-point-pow-log-exp-and-sqrt>
- * 	- <https://www.quinapalus.com/efunc.html> */
-
-q_t qcordic_exp(q_t e) { /**@todo replace with version that works for larger values */
+q_t qcordic_exp(q_t e) {
 	q_t s = QINT(0), h = QINT(0);
 	qsincosh(e, &s, &h);
 	return qadd(s, h);
@@ -714,8 +695,8 @@ q_t qcordic_ln(q_t d) {
 
 q_t qcordic_sqrt(q_t n) {  /* testing only; works for 0 < x < 2 */
 	const q_t quarter = 1uLL << (BITS - 2); /* 0.25 */
-	q_t x = qadd(n, quarter), 
-	    y = qsub(n, quarter), 
+	q_t x = qadd(n, quarter),
+	    y = qsub(n, quarter),
 	    z = 0;
 	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
@@ -738,14 +719,20 @@ void qpol2rec(q_t magnitude, q_t theta, q_t *i, q_t *j) {
 	*j = qmul(cos, magnitude);
 }
 
-/**@todo fix this */
-void qrec2pol(q_t i, q_t j, q_t *magnitude, q_t *theta) { /**@bug Does not take into account signs of i && j! */
+void qrec2pol(q_t i, q_t j, q_t *magnitude, q_t *theta) {
 	assert(magnitude);
 	assert(theta);
-	q_t x = qabs(i), y = qabs(j), z = QINT(0); /* abs() should not be needed? */
+	const int is = qisnegative(i), js = qisnegative(j);
+	q_t x = qabs(i), y = qabs(j), z = QINT(0);
 	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	*magnitude = qmul((x), cordic_circular_scaling);
+	if(is && js)
+		z = qadd(z, QPI);
+	else if(js)
+		z = qadd(z, QPI/2);
+	else if(is)
+		z = qadd(z, (3*QPI)/2);
 	*theta = z;
 }
 
@@ -806,13 +793,17 @@ q_t qexp(q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
 	return qmul(ed2, ed2);
 }
 
+/*q_t qpow(q_t n, q_t b) { 
+	return qexp(multiply(qlog(b), n));
+}*/
+
 q_t qsqrt(q_t x) { /* Newton Rhaphson method */
 	assert(qeqmore(x, 0));
 	const q_t difference = qmore(x, QINT(100)) ? 0x0100 : 0x0010;
 	if(qequal(QINT(0), x))
 		return QINT(0);
 	q_t guess = qmore(x, qinfo.sqrt2) ? divn(x, 1) : QINT(1);
-	while(qmore(qabs(qsub(qmul(guess, guess), x)), difference)) 
+	while(qmore(qabs(qsub(qmul(guess, guess), x)), difference))
 		guess = divn(qadd(qdiv(x, guess), guess), 1);
 	return qabs(guess); /* correct for overflow int very large numbers */
 }
@@ -831,4 +822,10 @@ q_t qrad2deg(q_t rad) {
 // long/int/q32.32/q8.8 conversion routines go here, if implemented
 
 /********* Conversion Utilities **********************************************/
+
+/********* Lookup table functions ********************************************/
+
+
+
+/********* Lookup table functions ********************************************/
 

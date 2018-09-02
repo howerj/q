@@ -3,7 +3,7 @@
  * @copyright Richard James Howe (2018)
  * @license MIT
  * @email howe.r.j.89@gmail.com
- * @site <https://github.com/howerj/q> 
+ * @site <https://github.com/howerj/q>
  *
  * This file contains a wrapper for testing the Q Number library,
  * it includes a command processor and some built in tests. View
@@ -36,10 +36,10 @@ typedef enum {
 typedef struct {
 	function_e type;
 	int arity;
-	union { 
-		function_binary_arith_t f; 
-		function_binary_compare_t c; 
-		function_unary_arith_t m; 
+	union {
+		function_binary_arith_t f;
+		function_binary_compare_t c;
+		function_unary_arith_t m;
 		function_unary_propery_t p;
 	} op;
 	char *name;
@@ -66,6 +66,7 @@ static const function_t *lookup(char *op) {
 		{ .op.f = qals,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "alshift" },
 		{ .op.f = qlls,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "lshift" },
 		{ .op.f = qhypot,  .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "hypot" },
+		//{ .op.f = qpow,  .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "pow" },
 
 		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
@@ -75,9 +76,11 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qabs,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
 		{ .op.m = qsin,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
 		{ .op.m = qcos,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
+		{ .op.m = qexp,    .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "exp" },
+		{ .op.m = qsqrt,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sqrt" },
+		{ .op.m = qsign,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sign" },
+		{ .op.m = qsignum, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "signum" },
 		{ .op.m = qcordic_exp, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_exp" },
-		{ .op.m = qexp, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,      .name = "exp" },
-		{ .op.m = qsqrt, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,      .name = "sqrt" },
 
 		{ .op.m = qnegate, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
@@ -400,6 +403,25 @@ static int eval_file(FILE *input, FILE *output) {
 	return 0;
 }
 
+/*static void polprn(FILE *out) {
+	q_t i = 0, j = 0, mag = 0, theta = 0;
+	for(i = -qint(1); qless(i, qint(2)); i = qadd(i, qint(1)))
+		for(j = -qint(1); qless(j, qint(2)); j = qadd(j, qint(1))) {
+			q_t in = 0, jn = 0;
+			qrec2pol(i, j, &mag, &theta);
+			printq(out, i,     "i");
+			printq(out, j,     "j");
+			printq(out, mag,   "mag");
+			printq(out, qrad2deg(theta), "theta");
+			qpol2rec(mag, theta, &in, &jn);
+			printq(out, in,     "in");
+			printq(out, jn,     "jn");
+
+			fputc('\n', out);
+		}
+}*/
+
+
 static int test_sanity(void) {
 	unit_test_start();
 
@@ -459,6 +481,8 @@ static int internal_tests(void) { /**@todo add more tests */
 	for(size_t i = 0; tests[i]; i++)
 		if(tests[i]() < 0)
 			return -1;
+
+
 	return 0;
 }
 
@@ -543,7 +567,7 @@ int main(int argc, char **argv) {
 	test_duo(out, "+", qinfo.max, qinfo.one);
 	test_duo(out, "+", qinfo.max, qinfo.max);
 	test_duo(out, "-", qinfo.min, qinfo.one);
-	qconf.bound = qbound_saturate; 
+	qconf.bound = qbound_saturate;
 	
 	return 0;*/
 }

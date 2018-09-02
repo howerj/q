@@ -6,13 +6,18 @@ RANLIB=ranlib
 
 .PHONY: all run clean
 
-all: ${TARGET}
+all: ${TARGET} cpp
 
-run: ${TARGET} t.q
+run: test ${TARGET} t.q
 	./${TARGET} t.q
 
 test: ${TARGET}
 	./${TARGET} -t
+
+
+q.o: q.c q.h
+
+c.o: c.cpp q.hpp q.h
 
 lib${TARGET}.a: q.o
 	${AR} rcs $@ $<
@@ -20,7 +25,7 @@ lib${TARGET}.a: q.o
 
 ${TARGET}: lib${TARGET}.a t.o
 
-cpp: c.cpp lib${TARGET}.a
+cpp: c.o lib${TARGET}.a
 	${CXX} ${CXFLAGS} $^ -o $@
 
 clean:

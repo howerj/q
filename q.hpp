@@ -8,7 +8,7 @@
 #ifndef QCPP_H
 #define QCPP_H
 
-#include "q.h" 
+#include "q.h"
 
 class Q {
 	private:
@@ -42,6 +42,9 @@ class Q {
 		const int operator>= (const Q &o) const { return  qeqmore(this->v, o.v); }
 		const int operator<  (const Q &o) const { return    qless(this->v, o.v); }
 		const int operator<= (const Q &o) const { return  qeqless(this->v, o.v); }
+
+		Q sin()  { Q r; r.q(qsin(v));  return r; }
+		Q sqrt() { Q r; r.q(qsqrt(v)); return r; }
 };
 
 #endif

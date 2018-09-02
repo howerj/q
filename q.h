@@ -71,6 +71,8 @@ q_t qmin(q_t a, q_t b);
 q_t qmax(q_t a, q_t b);
 q_t qabs(q_t a);
 q_t qcopysign(q_t a, q_t b);
+q_t qsign(q_t a);
+q_t qsignum(q_t a);
 
 q_t qadd(q_t a, q_t b);
 q_t qsub(q_t a, q_t b);
@@ -120,6 +122,7 @@ q_t qcordic_mul(q_t a, q_t b); /* CORDIC testing only; do not use */
 q_t qcordic_div(q_t a, q_t b); /* CORDIC testing only; do not use */
 q_t qcordic_circular_gain(int n);
 q_t qcordic_hyperbolic_gain(int n);
+
 void qpol2rec(q_t magnitude, q_t theta, q_t *i, q_t *j);
 void qrec2pol(q_t i, q_t j, q_t *magnitude, q_t *theta);
 
