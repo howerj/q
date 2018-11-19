@@ -757,7 +757,7 @@ static int isodd(unsigned n) {
 	return n & 1;
 }
 
-d_t dpower(d_t b, unsigned e) { /*https://stackoverflow.com/questions/101439/*/
+d_t dpower(d_t b, unsigned e) { /* https://stackoverflow.com/questions/101439 */
     d_t result = 1;
     for (;;) {
         if (isodd(e))
