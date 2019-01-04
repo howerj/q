@@ -115,8 +115,8 @@ static const function_t *lookup(char *op) {
 
 	};
 	const size_t length = sizeof(functions) / sizeof(functions[0]);
-	for(size_t i = 0; i < length; i++) {
-		if(!strcmp(functions[i].name, op))
+	for (size_t i = 0; i < length; i++) {
+		if (!strcmp(functions[i].name, op))
 			return &functions[i];
 	}
 	return NULL;
@@ -153,7 +153,7 @@ static void print_sincos_table(FILE *out) {
 	const q_t end   = qmul(qinfo.pi, qint(2));
 	const q_t start = qnegate(end);
 	fprintf(out, "theta,sine,cosine\n");
-	for(q_t i = start; qless(i, end); i = qadd(i, tpi)) {
+	for (q_t i = start; qless(i, end); i = qadd(i, tpi)) {
 		print_sincos(out, i);
 	}
 }
@@ -183,9 +183,9 @@ static void qconf_print(FILE *out, const qconf_t *qc) {
 	fprintf(out, "Q Configuration\n");
 	const char *bounds = "unknown";
 	qbounds_t bound = qc->bound;
-	if(bound == qbound_saturate)
+	if (bound == qbound_saturate)
 		bounds = "saturate";
-	if(bound == qbound_wrap)
+	if (bound == qbound_wrap)
 		bounds = "wrap";
 	fprintf(out, "overflow handler: %s\n", bounds);
 	fprintf(out, "input/output radix: %u (0 = special case)\n", qc->base);
@@ -196,7 +196,7 @@ static FILE *fopen_or_die(const char *file, const char *mode) {
 	assert(file && mode);
 	FILE *h = NULL;
 	errno = 0;
-	if(!(h = fopen(file, mode))) {
+	if (!(h = fopen(file, mode))) {
 		fprintf(stderr, "file open \"%s\" (mode %s) failed: %s\n", file, mode, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
@@ -218,7 +218,7 @@ typedef enum {
 } eval_errors_e;
 
 static const char *eval_error(int e) {
-	if(e < 0 || e >= EVAL_ERROR_MAX_ERRORS_E)
+	if (e < 0 || e >= EVAL_ERROR_MAX_ERRORS_E)
 		return "unknown";
 	const char *msgs[EVAL_ERROR_MAX_ERRORS_E] = {
 		[EVAL_OK_E]                      = "ok",
@@ -237,7 +237,7 @@ static const char *eval_error(int e) {
 static int qwithin(q_t v, q_t b1, q_t b2) {
 	const q_t hi = qmax(b1, b2);
 	const q_t lo = qmin(b1, b2);
-	if(qequal(v, b1) || qequal(v, b2))
+	if (qequal(v, b1) || qequal(v, b2))
 		return 1;
 	return qless(v, hi) && qmore(v, lo) ? 1 : 0;
 }
@@ -253,7 +253,7 @@ static int eval_unary_property(function_unary_propery_t p, q_t expected, q_t bou
 	assert(result);
 	const int r = p(arg1);
 	*result = qint(r);
-	if(qwithin_bounds(qint(r), expected, bound))
+	if (qwithin_bounds(qint(r), expected, bound))
 		return 0;
 	return -1;
 }
@@ -263,7 +263,7 @@ static int eval_unary_arith(function_unary_arith_t m, q_t expected, q_t bound, q
 	assert(result);
 	const q_t r = m(arg1);
 	*result = r;
-	if(qwithin_bounds(r, expected, bound))
+	if (qwithin_bounds(r, expected, bound))
 		return 0;
 	return -1;
 }
@@ -273,7 +273,7 @@ static int eval_binary_comp(function_binary_compare_t c, q_t expected, q_t arg1,
 	assert(result);
 	const int r = c(arg1, arg2);
 	*result = qint(r);
-	if(r == qtoi(expected))
+	if (r == qtoi(expected))
 		return 0;
 	return -1;
 }
@@ -283,7 +283,7 @@ static int eval_binary_arith(function_binary_arith_t f, q_t expected, q_t bound,
 	assert(result);
 	const q_t r = f(arg1, arg2);
 	*result = r;
-	if(qwithin_bounds(r, expected, bound))
+	if (qwithin_bounds(r, expected, bound))
 		return 0;
 	return -1;
 }
@@ -291,14 +291,14 @@ static int eval_binary_arith(function_binary_arith_t f, q_t expected, q_t bound,
 static int comment(char *line) {
 	assert(line);
 	const size_t length = strlen(line);
-	for(size_t i = 0; i < length; i++) {
-		if(line[i] == '#')
+	for (size_t i = 0; i < length; i++) {
+		if (line[i] == '#')
 			return 1;
-		if(!isspace(line[i]))
+		if (!isspace(line[i]))
 			break;
 	}
-	for(size_t i = 0; i < length; i++) {
-		if(line[i] == '#') {
+	for (size_t i = 0; i < length; i++) {
+		if (line[i] == '#') {
 			line[i] = 0;
 			return 0;
 		}
@@ -308,7 +308,7 @@ static int comment(char *line) {
 
 static void bounds_set(char method) {
 	assert(method == '|' || method == '%');
-	if(method == '|')
+	if (method == '|')
 		qconf.bound = qbound_saturate;
 	qconf.bound = qbound_wrap;
 }
@@ -317,48 +317,48 @@ static int eval(char *line, q_t *result) {
 	assert(line);
 	assert(result);
 	*result = qinfo.zero;
-	if(comment(line))
+	if (comment(line))
 		return EVAL_COMMENT_E;
 	char operation[N] = { 0 }, expected[N] = { 0 }, bounds[N], arg1[N] = { 0 }, arg2[N] = { 0 };
 	char limit = '|';
 	const int count = sscanf(line, "%15s %15s +- %15s %c %15s %15s", operation, expected, bounds, &limit, arg1, arg2);
-	if(limit != '|' && limit != '%')
+	if (limit != '|' && limit != '%')
 		return -EVAL_ERROR_LIMIT_MODE_E;
 	bounds_set(limit);
-	if(count < 5)
+	if (count < 5)
 		return -EVAL_ERROR_SCAN_E;
 	const function_t *func = lookup(operation);
-	if(!func)
+	if (!func)
 		return -EVAL_ERROR_OPERATION_E;
 	q_t e = qinfo.zero, b = qinfo.zero, a1 = qinfo.zero, a2 = qinfo.zero;
 	const int argc = count - 4;
-	if(func->arity != argc)
+	if (func->arity != argc)
 		return -EVAL_ERROR_ARG_COUNT_E;
-	if(qconv(&e, expected) < 0)
+	if (qconv(&e, expected) < 0)
 		return -EVAL_ERROR_CONVERT_E;
-	if(qconv(&b, bounds) < 0)
+	if (qconv(&b, bounds) < 0)
 		return -EVAL_ERROR_CONVERT_E;
-	if(qconv(&a1, arg1) < 0)
+	if (qconv(&a1, arg1) < 0)
 		return -EVAL_ERROR_CONVERT_E;
-	switch(func->type) {
+	switch (func->type) {
 	case FUNCTION_UNARY_PROPERY_E:
-		if(eval_unary_property(func->op.p, e, b, a1, result) < 0)
+		if (eval_unary_property(func->op.p, e, b, a1, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
 		break;
 	case FUNCTION_UNARY_ARITHMETIC_E:
-		if(eval_unary_arith(func->op.m, e, b, a1, result) < 0)
+		if (eval_unary_arith(func->op.m, e, b, a1, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
 		break;
 	case FUNCTION_BINARY_ARITHMETIC_E:
-		if(qconv(&a2, arg2) < 0)
+		if (qconv(&a2, arg2) < 0)
 			return -EVAL_ERROR_CONVERT_E;
-		if(eval_binary_arith(func->op.f, e, b, a1, a2, result) < 0)
+		if (eval_binary_arith(func->op.f, e, b, a1, a2, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
 		break;
 	case FUNCTION_BINARY_COMPARISON_E:
-		if(qconv(&a2, arg2) < 0)
+		if (qconv(&a2, arg2) < 0)
 			return -EVAL_ERROR_CONVERT_E;
-		if(eval_binary_comp(func->op.f, e, a1, a2, result) < 0)
+		if (eval_binary_comp(func->op.f, e, a1, a2, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
 		break;
 	default:
@@ -369,8 +369,8 @@ static int eval(char *line, q_t *result) {
 
 static void trim(char *s) {
 	const int size = strlen(s);
-	for(int i = size - 1; i >= 0; i--) {
-		if(!isspace(s[i]))
+	for (int i = size - 1; i >= 0; i--) {
+		if (!isspace(s[i]))
 			break;
 		s[i] = 0;
 	}
@@ -380,12 +380,12 @@ static int eval_file(FILE *input, FILE *output) {
 	assert(input);
 	assert(output);
 	char line[256] = { 0 };
-	while(fgets(line, sizeof(line) - 1, input)) {
+	while (fgets(line, sizeof(line) - 1, input)) {
 		q_t result = 0;
 		const int r = eval(line, &result);
-		if(r == EVAL_COMMENT_E)
+		if (r == EVAL_COMMENT_E)
 			continue;
-		if(r < 0) {
+		if (r < 0) {
 			const char *msg = eval_error(-r);
 			trim(line);
 			fprintf(output, "error: eval(\"%s\") = %d: %s\n", line, r, msg);
@@ -405,8 +405,8 @@ static int eval_file(FILE *input, FILE *output) {
 
 /*static void polprn(FILE *out) {
 	q_t i = 0, j = 0, mag = 0, theta = 0;
-	for(i = -qint(1); qless(i, qint(2)); i = qadd(i, qint(1)))
-		for(j = -qint(1); qless(j, qint(2)); j = qadd(j, qint(1))) {
+	for (i = -qint(1); qless(i, qint(2)); i = qadd(i, qint(1)))
+		for (j = -qint(1); qless(j, qint(2)); j = qadd(j, qint(1))) {
 			q_t in = 0, jn = 0;
 			qrec2pol(i, j, &mag, &theta);
 			printq(out, i,     "i");
@@ -478,8 +478,8 @@ static int internal_tests(void) { /**@todo add more tests */
 		test_fma,
 		NULL
 	};
-	for(size_t i = 0; tests[i]; i++)
-		if(tests[i]() < 0)
+	for (size_t i = 0; tests[i]; i++)
+		if (tests[i]() < 0)
 			return -1;
 
 
@@ -528,23 +528,23 @@ int main(int argc, char **argv) {
 	char *on = getenv("COLOR");
 	unit_color_on = (on && !strcmp(on, "on"));
 
-	for(int i = 1; i < argc; i++) {
-		if(!strcmp("-h", argv[i])) {
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp("-h", argv[i])) {
 			help(stdout, argv[0]);
 			return 0;
-		} else if(!strcmp("-s", argv[i])) {
+		} else if (!strcmp("-s", argv[i])) {
 			print_sincos_table(stdout);
 			ran = true;
-		} else if(!strcmp("-v", argv[i])) {
+		} else if (!strcmp("-v", argv[i])) {
 			fprintf(stdout, "version 1.0\n");
 			return 0;
-		} else if(!strcmp("-c", argv[i])) {
+		} else if (!strcmp("-c", argv[i])) {
 			unit_color_on = true;
-		} else if(!strcmp("-t", argv[i])) {
-			if(internal_tests() < 0)
+		} else if (!strcmp("-t", argv[i])) {
+			if (internal_tests() < 0)
 				return -1;
 			ran = true;
-		} else if(!strcmp("-i", argv[i])) {
+		} else if (!strcmp("-i", argv[i])) {
 			qinfo_print(stdout, &qinfo);
 			qconf_print(stdout, &qconf);
 			ran = true;
@@ -554,11 +554,11 @@ int main(int argc, char **argv) {
 			const int r = eval_file(input, output);
 			ran = true;
 			fclose(input);
-			if(r < 0)
+			if (r < 0)
 				return -1;
 		}
 	}
-	if(!ran)
+	if (!ran)
 		return eval_file(stdin, stdout);
 	return 0;
 

@@ -88,13 +88,13 @@ qconf_t qconf = { /* Global Configuration Options */
 
 q_t qbound_saturate(ld_t s) { /**< default saturation handler */
 	assert(s > DMAX || s < DMIN);
-	if(s > DMAX) return DMAX;
+	if (s > DMAX) return DMAX;
 	return DMIN;
 }
 
 q_t qbound_wrap(ld_t s) { /**< wrap numbers on overflow */
 	assert(s > DMAX || s < DMIN);
-	if(s > DMAX) return DMIN + (s % DMAX);
+	if (s > DMAX) return DMIN + (s % DMAX);
 	return DMAX - ((-s) % DMAX);
 }
 
@@ -106,14 +106,14 @@ static inline q_t qsat(ld_t s) {
 	BUILD_BUG_ON(sizeof(d_t)  != (sizeof(hd_t) * 2));
 	BUILD_BUG_ON(sizeof(lu_t) != (sizeof(u_t)  * 2));
 
-	if(s > DMAX) return qconf.bound(s);
-	if(s < DMIN) return qconf.bound(s);
+	if (s > DMAX) return qconf.bound(s);
+	if (s < DMIN) return qconf.bound(s);
 	return s;
 }
 
 inline d_t arshift(d_t v, unsigned p) {
 	u_t vn = v;
-	if(v >= 0)
+	if (v >= 0)
 		return vn >> p;
 	const u_t leading = ((u_t)(-1L)) << ((sizeof(v)*CHAR_BIT) - p);
 	return leading | (vn >> p);
@@ -187,11 +187,11 @@ q_t qround(q_t q) {
 
 int qpack(const q_t *q, char *buffer, size_t length) {
 	assert(buffer);
-	if(length < sizeof(*q))
+	if (length < sizeof(*q))
 		return -1;
 	q_t qn = *q;
 	uint8_t *b = (uint8_t*)buffer;
-	for(size_t i = 0; i < sizeof(qn); i++) {
+	for (size_t i = 0; i < sizeof(qn); i++) {
 		b[i] = qn;
 		qn = (u_t)qn >> CHAR_BIT;
 	}
@@ -201,11 +201,11 @@ int qpack(const q_t *q, char *buffer, size_t length) {
 int qunpack(q_t *q, const char *buffer, size_t length) {
 	assert(q);
 	assert(buffer);
-	if(length < sizeof(*q))
+	if (length < sizeof(*q))
 		return -1;
 	uint8_t *b = (uint8_t*)buffer;
 	u_t nq = 0;
-	for(size_t i = 0; i < sizeof(*q); i++) {
+	for (size_t i = 0; i < sizeof(*q); i++) {
 		nq <<= CHAR_BIT;
 		nq |= b[sizeof(*q)-i-1];
 	}
@@ -230,7 +230,7 @@ q_t qfma(q_t a, q_t b, q_t c) {
 q_t qdiv(q_t a, q_t b) {
 	const ld_t dd = ((ld_t)a) << BITS;
 	ld_t bd2 = divn(b, 1);
-	if(!((dd >= 0 && b >= 0) || (dd < 0 && b < 0)))
+	if (!((dd >= 0 && b >= 0) || (dd < 0 && b < 0)))
 		bd2 = -bd2;
 	return (dd + bd2) / b;
 }
@@ -243,8 +243,8 @@ q_t qrem(q_t a, q_t b) {
 	a = qabs(a);
 	b = qabs(b);
 	const q_t nb = qnegate(b);
-	while(qeqless(a, nb)) a = qadd(a, b);
-	while(qeqmore(a,  b)) a = qadd(a, nb);
+	while (qeqless(a, nb)) a = qadd(a, b);
+	while (qeqmore(a,  b)) a = qadd(a, nb);
 	return a;
 }*/
 
@@ -253,7 +253,7 @@ q_t qrem(q_t a, q_t b) {
 
 static char itoch(unsigned ch) {
 	assert(ch < 36);
-	if(ch <= 9)
+	if (ch <= 9)
 		return ch + '0';
 	return ch + 'A';
 }
@@ -268,22 +268,22 @@ static inline void swap(char *a, char *b) {
 
 static void reverse(char *s, size_t length) {
 	assert(s);
-	for(size_t i = 0; i < length/2; i++)
+	for (size_t i = 0; i < length/2; i++)
 		swap(&s[i], &s[length - i - 1]);
 }
 
 static int uprint(u_t p, char *s, size_t length, int base) {
 	assert(s);
 	assert(base >= 2 && base <= 36);
-	if(length < 2)
+	if (length < 2)
 		return -1;
 	size_t i = 0;
 	do {
 		unsigned ch = p % base;
 		p /= base;
 		s[i++] = itoch(ch);
-	} while(p && i < length);
-	if(p && i >= length)
+	} while (p && i < length);
+	if (p && i >= length)
 		return -1;
 	reverse(s, i);
 	return i;
@@ -293,7 +293,7 @@ static int uprint(u_t p, char *s, size_t length, int base) {
 int qsprint(q_t p, char *s, size_t length) {
 	assert(s);
 	const int negative = qisnegative(p);
-	if(negative)
+	if (negative)
 		p = qnegate(p);
 	const u_t base = qconf.base;
 	const d_t hi = qhigh(p);
@@ -302,17 +302,17 @@ int qsprint(q_t p, char *s, size_t length) {
 	assert(base >= 2 && base <= 36);
 	u_t lo = qlow(p);
 	size_t i = 1;
-	for(i = 1; lo; i++) {
-		if(qconf.dp >= 0 && (int)i >= qconf.dp)
+	for (i = 1; lo; i++) {
+		if (qconf.dp >= 0 && (int)i >= qconf.dp)
 			break;
 		lo *= base;
 		frac[i] = itoch(lo >> BITS);
 		lo &= MASK;
 	}
-	if(negative)
+	if (negative)
 		s[0] = '-';
 	const int hisz = uprint(hi, s + negative, length - 1, base);
-	if(hisz < 0 || (hisz + i + negative + 1) > length)
+	if (hisz < 0 || (hisz + i + negative + 1) > length)
 		return -1;
 	memcpy(s + hisz + negative, frac, i);
 	return i + hisz;
@@ -321,13 +321,13 @@ int qsprint(q_t p, char *s, size_t length) {
 static inline int extract(unsigned char c, int radix)
 {
 	c = tolower(c);
-	if(c >= '0' && c <= '9')
+	if (c >= '0' && c <= '9')
 		c -= '0';
-	else if(c >= 'a' && c <= 'z')
+	else if (c >= 'a' && c <= 'z')
 		c -= ('a' - 10);
 	else
 		return -1;
-	if(c < radix)
+	if (c < radix)
 		return c;
 	return -1;
 }
@@ -343,46 +343,46 @@ int qnconv(q_t *q, const char *s, size_t length) {
 	assert(q);
 	assert(s);
 	*q = QINT(0);
-	if(length < 1)
+	if (length < 1)
 		return -1;
 	const long base = qconf.base, idp = qconf.dp;
 	long hi = 0, lo = 0, places = 1, negative = 0, overflow = 0;
 	size_t sidx = 0;
 	assert(base >= 2 && base <= 36);
 
-	if(s[sidx] == '-') {
-		if(length < 2)
+	if (s[sidx] == '-') {
+		if (length < 2)
 			return -1;
 		negative = 1;
 		sidx++;
 	}
 
-	for(; sidx < length && s[sidx]; sidx++) {
+	for (; sidx < length && s[sidx]; sidx++) {
 		const long e = extract(s[sidx], base);
-		if(e < 0)
+		if (e < 0)
 			break;
 		hi = (hi * base) + e;
-		if(hi > MULTIPLIER) /* continue on with conversion */
+		if (hi > MULTIPLIER) /* continue on with conversion */
 			overflow = 1;
 	}
-	if(sidx >= length || !s[sidx])
+	if (sidx >= length || !s[sidx])
 		goto done;
-	if(s[sidx] != '.')
+	if (s[sidx] != '.')
 		return -2;
 	sidx++;
 	
-	for(int dp = 0; sidx < length && s[sidx]; sidx++, dp++) {
+	for (int dp = 0; sidx < length && s[sidx]; sidx++, dp++) {
 		const int ch = extract(s[sidx], base);
-		if(ch < 0)
+		if (ch < 0)
 			return -3;
-		if(dp <= idp) { /* continue on with conversion */
+		if (dp <= idp) { /* continue on with conversion */
 			lo = (lo * base) + ch;
-			if(places > (DMAX/base))
+			if (places > (DMAX/base))
 				return -4;
 			places *= base;
 		}
 	}
-	if(!places)
+	if (!places)
 		return -5;
 	lo = ((long)((unsigned long)lo << BITS) / places);
 done:
@@ -390,7 +390,7 @@ done:
 		const q_t nq = qmk(hi, lo);
 		*q = negative ? qnegate(nq) : nq;
 	}
-	if(overflow)
+	if (overflow)
 		return -6;
 	return 0;
 }
@@ -437,7 +437,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 	assert(x0);
 	assert(y0);
 	assert(z0);
-	if(mode != CORDIC_MODE_VECTOR_E && mode != CORDIC_MODE_ROTATE_E)
+	if (mode != CORDIC_MODE_VECTOR_E && mode != CORDIC_MODE_ROTATE_E)
 		return -1;
 
 	BUILD_BUG_ON(sizeof(d_t) != sizeof(uint32_t));
@@ -476,7 +476,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 	const size_t *shiftx = NULL, *shifty = NULL;
 	int hyperbolic = 0;
 
-	switch(coord) { /**@todo check this, it's probably buggy for linear/hyperbolic*/
+	switch (coord) { /**@todo check this, it's probably buggy for linear/hyperbolic*/
 	case CORDIC_COORD_CIRCULAR_E:
 		lookup = arctans;
 		length = arctans_length;
@@ -510,7 +510,7 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 
 	/* rotation mode: z determines direction,
 	 * vector mode:   y determines direction */
-	for(; j < (unsigned)iterations; i++, j++) {
+	for (; j < (unsigned)iterations; i++, j++) {
 		again:
 		{
 			const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -y /*-(qmul(y,x))*/;
@@ -524,8 +524,8 @@ static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations
 			y = yn; /*   sine, in circular, rotation mode   */
 			z = zn;
 		}
-		if(hyperbolic) {
-			if(k++ >= 3) {
+		if (hyperbolic) {
+			if (k++ >= 3) {
 				k = 0;
 				goto again;
 			}
@@ -550,25 +550,25 @@ static int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	static const q_t  dpi =   QPI*2, dnpi = -(QPI*2);
 
 	/* convert to range -pi   to pi */
-	while(qless(theta, npi)) theta = qadd(theta,  dpi);
-	while(qmore(theta,  pi)) theta = qadd(theta, dnpi);
+	while (qless(theta, npi)) theta = qadd(theta,  dpi);
+	while (qmore(theta,  pi)) theta = qadd(theta, dnpi);
 
 	int negate = 0, shift = 0;
 
 	/* convert to range -pi/2 to pi/2 */
-	if(qless(theta, hnpi)) {
+	if (qless(theta, hnpi)) {
 		theta = qadd(theta,  pi);
 		negate = 1;
-	} else if(qmore(theta, hpi)) {
+	} else if (qmore(theta, hpi)) {
 		theta = qadd(theta, npi);
 		negate = 1;
 	}
 
 	/* convert to range -pi/4 to pi/4 */
-	if(qless(theta, qnpi)) {
+	if (qless(theta, qnpi)) {
 		theta = qadd(theta,  hpi);
 		shift = -1;
-	} else if(qmore(theta, qpi)) {
+	} else if (qmore(theta, qpi)) {
 		theta = qadd(theta, hnpi);
 		shift =  1;
 	}
@@ -576,21 +576,21 @@ static int qcordic(q_t theta, int iterations, q_t *sine, q_t *cosine) {
 	d_t x = cordic_circular_scaling, y = 0, z = theta /* no theta scaling needed */;
 
 	/* CORDIC in Q2.16 format */
-	if(cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_ROTATE_E, iterations, &x, &y, &z) < 0)
+	if (cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_ROTATE_E, iterations, &x, &y, &z) < 0)
 		return -1;
 
 	/* undo shifting and quadrant changes */
-	if(shift > 0) {
+	if (shift > 0) {
 		const d_t yt = y;
 		y =  x;
 		x = -yt;
-	} else if(shift < 0) {
+	} else if (shift < 0) {
 		const d_t yt = y;
 		y = -x;
 		x =  yt;
 	}
 
-	if(negate) {
+	if (negate) {
 		x = -x;
 		y = -y;
 	}
@@ -727,11 +727,11 @@ void qrec2pol(q_t i, q_t j, q_t *magnitude, q_t *theta) {
 	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	*magnitude = qmul((x), cordic_circular_scaling);
-	if(is && js)
+	if (is && js)
 		z = qadd(z, QPI);
-	else if(js)
+	else if (js)
 		z = qadd(z, QPI/2);
-	else if(is)
+	else if (is)
 		z = qadd(z, (3*QPI)/2);
 	*theta = z;
 }
@@ -773,7 +773,7 @@ d_t dpower(d_t b, unsigned e) { /* https://stackoverflow.com/questions/101439 */
 d_t dlog(d_t x, unsigned base) { /* rounds up, look at remainder to round down */
 	d_t b = 0;
 	assert(x && base > 1);
-	while((x /= (d_t)base)) /* can use >> for base that are powers of two */
+	while ((x /= (d_t)base)) /* can use >> for base that are powers of two */
 		b++;
 	return b;
 }
@@ -781,13 +781,13 @@ d_t dlog(d_t x, unsigned base) { /* rounds up, look at remainder to round down *
 q_t qlog(q_t x) {
 	assert(qmore(x, 0));
 	static const q_t lmax = QMK(9, 0x8000, 16); /* 9.5, lower limit needs checking */
-	if(qmore(x, lmax))
+	if (qmore(x, lmax))
 		return qadd(qinfo.ln2, qlog(divn(x, 1)));
 	return qcordic_ln(x);
 }
 
 q_t qexp(q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
-	if(qless(e, QINT(1)))
+	if (qless(e, QINT(1)))
 		return qcordic_exp(e);
 	const q_t ed2 = qexp(divn(e, 1));
 	return qmul(ed2, ed2);
@@ -800,10 +800,10 @@ q_t qexp(q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
 q_t qsqrt(q_t x) { /* Newton Rhaphson method */
 	assert(qeqmore(x, 0));
 	const q_t difference = qmore(x, QINT(100)) ? 0x0100 : 0x0010;
-	if(qequal(QINT(0), x))
+	if (qequal(QINT(0), x))
 		return QINT(0);
 	q_t guess = qmore(x, qinfo.sqrt2) ? divn(x, 1) : QINT(1);
-	while(qmore(qabs(qsub(qmul(guess, guess), x)), difference))
+	while (qmore(qabs(qsub(qmul(guess, guess), x)), difference))
 		guess = divn(qadd(qdiv(x, guess), guess), 1);
 	return qabs(guess); /* correct for overflow int very large numbers */
 }
