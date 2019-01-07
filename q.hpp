@@ -10,6 +10,7 @@
 
 #include "q.h"
 
+/**@todo Either expand this to include all functionality, or delete this wrapper...*/
 class Q {
 	private:
 		q_t v;

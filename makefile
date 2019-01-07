@@ -1,4 +1,5 @@
 CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic -fwrapv
+CC=gcc
 TARGET=q
 RM=rm -fv
 AR=ar

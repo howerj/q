@@ -98,9 +98,13 @@ q_t qlrs(q_t a, q_t b);
 q_t qlls(q_t a, q_t b);
 q_t qals(q_t a, q_t b);
 
+/**@todo refactor/simplify these functions, there does not need to be so many of them */
 int qsprint(q_t p, char *s, size_t length);
+int qsprintb(q_t p, char *s, size_t length, unsigned long base);
 int qnconv(q_t *q, const char *s, size_t length);
+int qnconvb(q_t *q, const char *s, size_t length, long base);
 int qconv(q_t *q, const char *s);
+int qconvb(q_t *q, const char * const s, long base);
 
 void qsincos(q_t theta, q_t *sine, q_t *cosine);
 q_t qsin(q_t theta);

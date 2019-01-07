@@ -161,7 +161,7 @@ static void print_sincos_table(FILE *out) {
 static void qinfo_print(FILE *out, const qinfo_t *qi) {
 	assert(out);
 	assert(qi);
-	fprintf(out, "Q%zu.%zu Info\n", qi->whole, qi->fractional);
+	fprintf(out, "Q%u.%u Info\n", (unsigned)qi->whole, (unsigned)qi->fractional);
 	printq(out, qi->bit,   "bit");
 	printq(out, qi->one,   "one");
 	printq(out, qi->zero,  "zero");
@@ -422,6 +422,7 @@ static int eval_file(FILE *input, FILE *output) {
 }*/
 
 
+/**@todo remove/integrate test suite with this program */
 static int test_sanity(void) {
 	unit_test_start();
 

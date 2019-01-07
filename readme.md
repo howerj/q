@@ -79,6 +79,17 @@ For the round/ceil/trunc/floor functions the following table from the
 
 Have fun with the adding, and subtracting, and stuff, I hope it goes well.
 
+## To Do
+
+* [ ] Update this To Do section with comments from around the project
+* [ ] Look into, or implement a [BKM][] version for computing elementary functions
+instead of using a [CORDIC][] core. See also:
+  - <https://www-almasty.lip6.fr/~bajard/MesPublis/Spie1999.pdf>
+  - <http://perso.ens-lyon.fr/jean-michel.muller/BKM94.pdf>
+  A hardware implementation for an [FPGA][] in [VHDL][] would also be an interesting
+  project.
+
+[BKM]: https://en.wikipedia.org/wiki/BKM_algorithm
 [Doom]: https://en.wikipedia.org/wiki/Doom_(1993_video_game)
 [tolower]: http://www.cplusplus.com/reference/cctype/tolower/
 [makefile]: https://en.wikipedia.org/wiki/Make_(software)
@@ -86,5 +97,7 @@ Have fun with the adding, and subtracting, and stuff, I hope it goes well.
 [cplusplus.com]: http://www.cplusplus.com/reference/cmath/round/
 [Q16.16]: https://en.wikipedia.org/wiki/Fixed-point_arithmetic
 [CORDIC]: https://en.wikipedia.org/wiki/CORDIC
+[VHDL]: https://en.wikipedia.org/wiki/VHDL
+[FPGA]: https://en.wikipedia.org/wiki/Field-programmable_gate_array
 
 <style type="text/css">body{margin:40px auto;max-width:850px;line-height:1.6;font-size:16px;color:#444;padding:0 10px}h1,h2,h3{line-height:1.2}</style>
