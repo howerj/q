@@ -88,6 +88,8 @@ instead of using a [CORDIC][] core. See also:
   - <http://perso.ens-lyon.fr/jean-michel.muller/BKM94.pdf>
   A hardware implementation for an [FPGA][] in [VHDL][] would also be an interesting
   project.
+* [ ] Investigate using part of the numbers range to represent NaN (Not A Number),
+  and +/- Infinity, including number conversion to/from those special numbers.
 
 [BKM]: https://en.wikipedia.org/wiki/BKM_algorithm
 [Doom]: https://en.wikipedia.org/wiki/Doom_(1993_video_game)

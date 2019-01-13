@@ -24,6 +24,9 @@ lib${TARGET}.a: q.o
 	${AR} rcs $@ $<
 	${RANLIB} $@
 
+check: *.c *.h
+	cppcheck --enable=all *.c *.h
+
 ${TARGET}: lib${TARGET}.a t.o
 
 cpp: c.o lib${TARGET}.a

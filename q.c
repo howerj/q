@@ -28,6 +28,8 @@
  *	instead of via a global.
  *	- https://stackoverflow.com/questions/17504316/what-happens-with-an-extern-inline-function
  *	- https://stackoverflow.com/questions/25415197/should-i-deliberately-inline-functions-across-translation-units-in-c99?noredirect=1&lq=1
+ *	- An much simpler way of calculating sine/cosine is available at: http://files.righto.com/calculator/sinclair_scientific_simulator.html,
+ *	which was used in a cheap Sinclair scientific calculator
  */
 
 #include "q.h"
@@ -124,9 +126,9 @@ static inline q_t qsat(const ld_t s) {
 
 inline d_t arshift(const d_t v, const unsigned p) {
 	u_t vn = v;
-	if (v >= 0)
+	if (v >= 0l)
 		return vn >> p;
-	const u_t leading = ((u_t)(-1L)) << ((sizeof(v)*CHAR_BIT) - p);
+	const u_t leading = ((u_t)(-1l)) << ((sizeof(v)*CHAR_BIT) - p);
 	return leading | (vn >> p);
 }
 
@@ -190,7 +192,7 @@ q_t qtrunc(q_t q) {
 q_t qround(q_t q) {
 	const int negative = qisnegative(q);
 	q = qabs(q);
-	const q_t adj = qlow(q) & HIGH ? QINT(1) : QINT(0);
+	const q_t adj = (qlow(q) & HIGH) ? QINT(1) : QINT(0);
 	q = qadd(q, adj);
 	q = ((u_t)q) & (MASK << BITS);
 	return negative ? qnegate(q) : q;
@@ -227,7 +229,7 @@ int qunpack(q_t *q, const char *buffer, const size_t length) {
 static inline ld_t multiply(const q_t a, const q_t b) {
 	const ld_t dd = ((ld_t)a * (ld_t)b) + (lu_t)HIGH;
 	/* NB. portable version of "dd >> BITS", for double width signed values */
-	return dd < 0 ? (-1ULL << (2*BITS)) | ((lu_t)dd >> BITS) : ((lu_t)dd) >> BITS;
+	return dd < 0 ? (-1ull << (2 * BITS)) | ((lu_t)dd >> BITS) : ((lu_t)dd) >> BITS;
 }
 
 q_t qmul(const q_t a, const q_t b) {
@@ -239,9 +241,10 @@ q_t qfma(const q_t a, const q_t b, const q_t c) {
 }
 
 q_t qdiv(const q_t a, const q_t b) {
+	assert(b);
 	const ld_t dd = ((ld_t)a) << BITS;
 	ld_t bd2 = divn(b, 1);
-	if (!((dd >= 0 && b >= 0) || (dd < 0 && b < 0)))
+	if (!((dd >= 0 && b > 0) || (dd < 0 && b < 0)))
 		bd2 = -bd2;
 	return (dd + bd2) / b;
 }
@@ -333,8 +336,7 @@ int qsprint(const q_t p, char *s, const size_t length) {
 	return qsprintb(p, s, length, qconf.base); 
 }
 
-static inline int extract(unsigned char c, const int radix)
-{
+static inline int extract(unsigned char c, const int radix) {
 	c = tolower(c);
 	if (c >= '0' && c <= '9')
 		c -= '0';
@@ -458,7 +460,7 @@ static const d_t cordic_hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
  *  linear shift sequence:      i = 0, 1, 2, 3, ...
  *  circular shift sequence:    i = 1, 2, 3, 4, ...
  *  hyperbolic shift sequence:  i = 1, 2, 3, 4, 4, 5, ... */
-static int cordic(cordic_coordinates_e coord, cordic_mode_e mode, int iterations, d_t *x0, d_t *y0, d_t *z0) {
+static int cordic(const cordic_coordinates_e coord, const cordic_mode_e mode, int iterations, d_t *x0, d_t *y0, d_t *z0) {
 	assert(x0);
 	assert(y0);
 	assert(z0);
@@ -625,7 +627,7 @@ static int qcordic(q_t theta, const int iterations, q_t *sine, q_t *cosine) {
 	return 0;
 }
 
-q_t qatan(q_t t) {
+q_t qatan(const q_t t) {
 	q_t x = qint(1), y = t, z = QINT(0);
 	cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	return z;
@@ -735,7 +737,7 @@ q_t qhypot(const q_t a, const q_t b) {
 	return qmul((x), cordic_circular_scaling);
 }
 
-void qpol2rec(q_t magnitude, q_t theta, q_t *i, q_t *j) {
+void qpol2rec(const q_t magnitude, const q_t theta, q_t *i, q_t *j) {
 	assert(i);
 	assert(j);
 	q_t sin = QINT(0), cos = QINT(0);
@@ -811,7 +813,7 @@ q_t qlog(const q_t x) {
 	return qcordic_ln(x);
 }
 
-q_t qexp(q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
+q_t qexp(const q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
 	if (qless(e, QINT(1)))
 		return qcordic_exp(e);
 	const q_t ed2 = qexp(divn(e, 1));
@@ -831,6 +833,19 @@ q_t qsqrt(const q_t x) { /* Newton Rhaphson method */
 	while (qmore(qabs(qsub(qmul(guess, guess), x)), difference))
 		guess = divn(qadd(qdiv(x, guess), guess), 1);
 	return qabs(guess); /* correct for overflow int very large numbers */
+}
+
+/* See: https://dsp.stackexchange.com/questions/25770/looking-for-an-arcsin-algorithm
+ * https://stackoverflow.com/questions/7378187/approximating-inverse-trigonometric-functions
+ * https://ch.mathworks.com/examples/fixed-point-designer/mw/fixedpoint_product-fixpt_atan2_demo-calculate-fixed-point-arctangent
+ */
+
+q_t qasin(const q_t t) { /** @bug not working! */
+	return qmul(QINT(2), qatan(qdiv(t, qadd(QINT(1), qsqrt(qsub(QINT(1), qmul(t, t)))))));
+}
+
+q_t qacos(const q_t t) { /** @bug not working! */
+	return qmul(QINT(2), qatan(qdiv(qsqrt(qsub(QINT(1), qmul(t, t))) , qadd(QINT(1), t))));
 }
 
 /********* Power / Logarithms ************************************************/

@@ -93,10 +93,10 @@ q_t qand(q_t a, q_t b);
 q_t qxor(q_t a, q_t b);
 q_t qor(q_t a, q_t b);
 q_t qinvert(q_t a);
-q_t qars(q_t a, q_t b);
-q_t qlrs(q_t a, q_t b);
 q_t qlls(q_t a, q_t b);
+q_t qlrs(q_t a, q_t b);
 q_t qals(q_t a, q_t b);
+q_t qars(q_t a, q_t b);
 
 /**@todo refactor/simplify these functions, there does not need to be so many of them */
 int qsprint(q_t p, char *s, size_t length);
@@ -113,7 +113,9 @@ q_t qtan(q_t theta);
 q_t qcot(q_t theta);
 q_t qhypot(q_t a, q_t b);
 
-q_t qatan(q_t t);
+//q_t qatan(q_t t);
+//q_t qasin(q_t t);
+//q_t qacos(q_t t);
 q_t qsinh(q_t a);
 q_t qcosh(q_t a);
 q_t qtanh(q_t a);
