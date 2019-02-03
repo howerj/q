@@ -473,12 +473,32 @@ static int test_fma(void) {
 	return unit_test_finish();
 }
 
+static int test_filter(void) {
+	unit_test_start();
+	qfilter_t lpf = { .raw = 0 }, hpf = { .raw = 0 };
+	const q_t beta = qdiv(qint(1), qint(3));
+	qfilter_init(&lpf, qint(0), beta, qint(0));
+	qfilter_init(&hpf, qint(0), beta, qint(0));
+	for (int i = 0; i < 100; i++) {
+		char low[64+1] = { 0 }, high[64+1] = { 0 };
+		const q_t step = qdiv(qint(i), qint(100));
+		const q_t input = qint(1);
+		qfilter_low_pass(&lpf, step, input);
+		qfilter_high_pass(&hpf, step, input);
+		qsprint(qfilter_value(&lpf),  low, sizeof(low)  - 1ull);
+		qsprint(qfilter_value(&hpf), high, sizeof(high) - 1ull);
+		fprintf(stdout, "%2d: %s\t%s\n", i, low, high);
+	}
+	return unit_test_finish();
+}
+
 static int internal_tests(void) { /**@todo add more tests */
 	typedef int (*unit_test_t)(void);
 	unit_test_t tests[] = {
 		test_sanity,
 		test_pack,
 		test_fma,
+		test_filter,
 		NULL
 	};
 	for (size_t i = 0; tests[i]; i++)

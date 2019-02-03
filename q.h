@@ -36,6 +36,19 @@ typedef struct {
 	/**@todo document type of division, rounding behavior, etcetera */
 } qinfo_t;
 
+typedef struct {
+	q_t rc,        /**< time constant */
+	    time,      /**< time of previous measurement */
+	    raw,       /**< previous raw value */
+	    filtered;  /**< filtered value */
+} qfilter_t; /**< High/Low Pass Filter */
+
+typedef struct {
+	q_t d_gain, d_state;               /**< differentiator; gain, state */
+	q_t i_gain, i_state, i_min, i_max; /**< integrator; gain, state, minimum and maximum */
+	q_t p_gain;                        /**< proportional gain */
+} qpid_t; /**< PID Controller <https://en.wikipedia.org/wiki/PID_controller> */
+
 typedef q_t (*qbounds_t)(ld_t s);
 
 q_t qbound_saturate(ld_t s); /**< default over/underflow behavior, saturation */
@@ -50,6 +63,7 @@ typedef struct {
 extern const qinfo_t qinfo; /**< information about the format and constants */
 extern qconf_t qconf;       /**< @warning GLOBAL Q configuration options */
 
+/**@todo These should be inline-able... */
 int qisnegative(q_t a);
 int qispositive(q_t a);
 int qisinteger(q_t a);
@@ -65,6 +79,14 @@ int qunequal(q_t a, q_t b);
 
 int qtoi(q_t toi);
 q_t qint(int toq);
+signed char qtoc(const q_t q);
+q_t qchar(signed char c);
+short qtoh(const q_t q);
+q_t qshort(short s);
+long qtol(const q_t q);
+q_t qlong(long l);
+long long qtoll(const q_t q);
+q_t qvlong(long long ll);
 
 q_t qnegate(q_t a);
 q_t qmin(q_t a, q_t b);
@@ -140,6 +162,13 @@ d_t dlog(d_t n, unsigned base);
 d_t arshift(d_t v, unsigned p);
 int qpack(const q_t *q, char *buffer, size_t length);
 int qunpack(q_t *q, const char *buffer, size_t length);
+
+void qfilter_init(qfilter_t *f, q_t time, q_t rc, q_t seed);
+q_t qfilter_low_pass(qfilter_t *f, q_t time, q_t data);
+q_t qfilter_high_pass(qfilter_t *f, q_t time, q_t data);
+q_t qfilter_value(const qfilter_t *f);
+
+q_t qpid_update(qpid_t *pid, const q_t error, const q_t position);
 
 #ifdef __cplusplus
 }

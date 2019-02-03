@@ -155,6 +155,14 @@ int qequal(const q_t a, const q_t b)    { return a == b; }
 int qunequal(const q_t a, const q_t b)  { return a != b; }
 int qtoi(const q_t toi)                 { return ((lu_t)((ld_t)toi)) >> BITS; }
 q_t qint(const int toq)                 { return ((u_t)((d_t)toq)) << BITS; }
+signed char qtoc(const q_t q)           { return qtoi(q); }
+q_t qchar(signed char c)                { return qint(c); }
+short qtoh(const q_t q)                 { return qtoi(q); }
+q_t qshort(short s)                     { return qint(s); }
+long qtol(const q_t q)                  { return qtoi(q); }
+q_t qlong(long l)                       { return qint(l); }
+long long qtoll(const q_t q)            { return qtoi(q); }
+q_t qvlong(long long ll)                { return qint(ll); }
 q_t qnegate(const q_t a)                { return (~(u_t)a) + 1ULL; }
 q_t qmin(const q_t a, const q_t b)      { return qless(a, b) ? a : b; }
 q_t qmax(const q_t a, const q_t b)      { return qmore(a, b) ? a : b; }
@@ -166,12 +174,24 @@ q_t qand(const q_t a, const q_t b)      { return a & b; }
 q_t qxor(const q_t a, const q_t b)      { return a ^ b; }
 q_t qor(const q_t a, const q_t b)       { return a | b; }
 q_t qinvert(const q_t a)                { return ~a; }
+/** @note Should the shifting functions accept an integer instead for their shift param? */
 q_t qlrs(const q_t a, const q_t b)      { return (u_t)a >> (u_t)qtoi(b); }
 q_t qlls(const q_t a, const q_t b)      { return (u_t)a << b; }
 q_t qars(const q_t a, const q_t b)      { return arshift(a, qtoi(b)); }
 q_t qals(const q_t a, const q_t b)      { return qsat((lu_t)a << b); }
 q_t qsign(const q_t a)                  { return qisnegative(a) ? -QINT(1) : QINT(1); }
 q_t qsignum(const q_t a)                { return a ? qsign(a) : QINT(0); }
+
+/** @todo create a conversion routine that takes three numbers:
+     integer, fractional, divisor
+   So Q numbers can be generated more easily */
+/*
+q_t qconstruct(const int integer, const unsigned long fractional, const unsigned nexponent) {
+	const q_t i = qint(integer);
+	unsigned long f = (fractional << BITS) / (10ul * nexponent);
+	// assert((f & HIGH_BITS) == 0);
+	return i | f;
+} */
 
 q_t qfloor(const q_t q) {
 	return q & ~MASK;
@@ -863,9 +883,61 @@ q_t qrad2deg(const q_t rad) {
 
 /********* Conversion Utilities **********************************************/
 
-/********* Lookup table functions ********************************************/
+/********* Filters ***********************************************************/
 
-// What's meant to go here!?
+void qfilter_init(qfilter_t *f, const q_t time, const q_t rc, const q_t seed) {
+	assert(f);
+	f->time = time;
+	f->rc = rc;
+	f->filtered = seed; // alpha * seed for LPF
+	f->raw = seed;
+}
 
-/********* Lookup table functions ********************************************/
+q_t qfilter_low_pass(qfilter_t *f, const q_t time, const q_t data) {
+	assert(f);
+	/* If the calling rate is constant (for example the function is
+	 * guaranteed to be always called at a rate of 5 milliseconds) we
+	 * can avoid the costly alpha calculation! */
+	const q_t dt = (u_t)time - (u_t)f->time;
+	const q_t alpha = qdiv(dt, qadd(f->rc, dt));
+	f->filtered = qfma(alpha, qsub(data, f->filtered), f->filtered);
+	f->time = time;
+	f->raw  = data;
+	return f->filtered;
+}
 
+q_t qfilter_high_pass(qfilter_t *f, const q_t time, const q_t data) {
+	assert(f);
+	const q_t dt = (u_t)time - (u_t)f->time;
+	const q_t alpha = qdiv(f->rc, qadd(f->rc, dt));
+	f->filtered = qmul(alpha, qadd(f->filtered, qsub(data, f->raw)));
+	f->time = time;
+	f->raw  = data;
+	return f->filtered;
+}
+
+q_t qfilter_value(const qfilter_t *f) {
+	assert(f);
+	return f->filtered;
+}
+
+/********* Filters ***********************************************************/
+
+/********* PID Controller ****************************************************/
+
+/* Must be called at a constant rate; perhaps a PID which takes call time
+ * into account could be made, but that would complicate things. Differentiator
+ * term needs filtering also. */
+q_t qpid_update(qpid_t *pid, const q_t error, const q_t position) {
+	assert(pid);
+	const q_t p  = qmul(pid->p_gain, error);
+	pid->i_state = qadd(pid->i_state, error);
+	pid->i_state = qmax(pid->i_state, pid->i_min);
+	pid->i_state = qmin(pid->i_state, pid->i_max);
+	const q_t i  = qmul(pid->i_state, pid->i_gain);
+	const q_t d  = qmul(pid->d_gain, qsub(position, pid->d_state));
+	pid->d_state = position;
+	return qsub(qadd(p, i), d);
+}
+
+/********* PID Controller ****************************************************/
