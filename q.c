@@ -55,14 +55,8 @@
 #define LDMIN (INT64_MIN)
 #define LDMAX (INT64_MAX)
 
-#ifndef MIN
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
-#endif
-
-#ifndef MAX
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
-#endif
-
 #define QMK(HIGH, LOW, SF) ((ld_t)((((lu_t)HIGH) << BITS) | (MASK & ((((lu_t)LOW) << BITS) >> (SF)))))
 #define QINT(INT)          ((q_t)((u_t)(INT) << BITS))
 #define QPI (QMK(0x3, 0x243F, 16))
@@ -97,7 +91,9 @@ qconf_t qconf = { /* Global Configuration Options */
 /********* Basic Library Routines ********************************************/
 
 static void static_assertions(void) {
-	/*@todo more static assertions relating to min/max numbers, BITS and MASK */
+	/*@todo more static assertions relating to min/max numbers, and MASK */
+	BUILD_BUG_ON(CHAR_BIT != 8);
+	BUILD_BUG_ON((sizeof(q_t)*CHAR_BIT) != (BITS * 2));
 	BUILD_BUG_ON( sizeof(q_t) !=  sizeof(u_t));
 	BUILD_BUG_ON( sizeof(u_t) !=  sizeof(d_t));
 	BUILD_BUG_ON(sizeof(lu_t) !=  sizeof(ld_t));
@@ -175,18 +171,29 @@ q_t qxor(const q_t a, const q_t b)      { return a ^ b; }
 q_t qor(const q_t a, const q_t b)       { return a | b; }
 q_t qinvert(const q_t a)                { return ~a; }
 /** @note Should the shifting functions accept an integer instead for their shift param? */
-q_t qlrs(const q_t a, const q_t b)      { return (u_t)a >> (u_t)qtoi(b); }
+q_t qlrs(const q_t a, const q_t b)      { /* assert low bits == 0? */ return (u_t)a >> (u_t)qtoi(b); }
 q_t qlls(const q_t a, const q_t b)      { return (u_t)a << b; }
 q_t qars(const q_t a, const q_t b)      { return arshift(a, qtoi(b)); }
 q_t qals(const q_t a, const q_t b)      { return qsat((lu_t)a << b); }
 q_t qsign(const q_t a)                  { return qisnegative(a) ? -QINT(1) : QINT(1); }
 q_t qsignum(const q_t a)                { return a ? qsign(a) : QINT(0); }
 
+int qapproxequal(const q_t a, const q_t b, const q_t epsilon) { 
+	assert(qeqmore(epsilon, qint(0))); 
+	return qless(qabs(qsub(a, b)), epsilon); 
+}
+
+int qapproxunequal(const q_t a, const q_t b, const q_t epsilon) { 
+	return !qapproxequal(a, b, epsilon); 
+}
+
 /** @todo create a conversion routine that takes three numbers:
      integer, fractional, divisor
    So Q numbers can be generated more easily */
 /*
 q_t qconstruct(const int integer, const unsigned long fractional, const unsigned nexponent) {
+	// assert(integer <= max_q_int && integer => min_q_int); // no effect is sizeof(int) <= sizeof(q_t)
+	// assert(fractional <= max_fract_int && fractional => min_frac_int);
 	const q_t i = qint(integer);
 	unsigned long f = (fractional << BITS) / (10ul * nexponent);
 	// assert((f & HIGH_BITS) == 0);
@@ -523,7 +530,7 @@ static int cordic(const cordic_coordinates_e coord, const cordic_mode_e mode, in
 	const size_t *shiftx = NULL, *shifty = NULL;
 	int hyperbolic = 0;
 
-	switch (coord) { /**@todo check this, it's probably buggy for linear/hyperbolic*/
+	switch (coord) { /**@todo check this, it's probably buggy for linear/hyperbolic, it's also ugly*/
 	case CORDIC_COORD_CIRCULAR_E:
 		lookup = arctans;
 		length = arctans_length;
@@ -840,10 +847,23 @@ q_t qexp(const q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
 	return qmul(ed2, ed2);
 }
 
-/*q_t qpow(q_t n, q_t b) { 
-	return qexp(multiply(qlog(b), n));
-}*/
-
+/* // Nearly works!
+ * q_t qpow(q_t n, const q_t exp) { 
+	// return qexp(multiply(qlog(n), exp));
+	if (qequal(QINT(0), n)) {
+		if (qeqmore(exp, QINT(0)))
+			return QINT(0);
+		// else abort()
+	}	
+	const bool isn = qisnegative(n);
+	n = qabs(n);
+	if (qisnegative(exp))
+		n = qdiv(QINT(1), qpow(n, qabs(exp)));
+	else
+		n = qexp(multiply(qlog(n), exp));
+	return isn ? qnegate(n) : n;
+}
+*/
 q_t qsqrt(const q_t x) { /* Newton Rhaphson method */
 	assert(qeqmore(x, 0));
 	const q_t difference = qmore(x, QINT(100)) ? 0x0100 : 0x0010;
@@ -941,3 +961,4 @@ q_t qpid_update(qpid_t *pid, const q_t error, const q_t position) {
 }
 
 /********* PID Controller ****************************************************/
+

@@ -90,6 +90,7 @@ instead of using a [CORDIC][] core. See also:
   project.
 * [ ] Investigate using part of the numbers range to represent NaN (Not A Number),
   and +/- Infinity, including number conversion to/from those special numbers.
+* [ ] A 64-bit version would be nice, for Q32.32 numbers.
 
 [BKM]: https://en.wikipedia.org/wiki/BKM_algorithm
 [Doom]: https://en.wikipedia.org/wiki/Doom_(1993_video_game)

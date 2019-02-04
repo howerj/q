@@ -74,7 +74,7 @@ int qless(q_t a, q_t b);
 int qmore(q_t a, q_t b);
 int qeqless(q_t a, q_t b);
 int qeqmore(q_t a, q_t b);
-int qequal(q_t a, q_t b);
+int qequal(q_t a, q_t b); /**@todo add approximate equality/inequality */
 int qunequal(q_t a, q_t b);
 
 int qtoi(q_t toi);
@@ -119,6 +119,8 @@ q_t qlls(q_t a, q_t b);
 q_t qlrs(q_t a, q_t b);
 q_t qals(q_t a, q_t b);
 q_t qars(q_t a, q_t b);
+
+// q_t qpow(q_t n, q_t exp);
 
 /**@todo refactor/simplify these functions, there does not need to be so many of them */
 int qsprint(q_t p, char *s, size_t length);
