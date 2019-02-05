@@ -141,11 +141,11 @@ static void print_sincos(FILE *out, const q_t theta) {
 	q_t sine  = qinfo.zero, cosine = qinfo.zero;
 	qsincos(theta, &sine, &cosine);
 	qprint(out, theta);
-	fprintf(out, ",");
+	fputc(',', out);
 	qprint(out, sine);
-	fprintf(out, ",");
+	fputc(',', out);
 	qprint(out, cosine);
-	fprintf(out, "\n");
+	fputc('\n', out);
 }
 
 static void print_sincos_table(FILE *out) {

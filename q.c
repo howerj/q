@@ -178,7 +178,7 @@ q_t qals(const q_t a, const q_t b)      { return qsat((lu_t)a << b); }
 q_t qsign(const q_t a)                  { return qisnegative(a) ? -QINT(1) : QINT(1); }
 q_t qsignum(const q_t a)                { return a ? qsign(a) : QINT(0); }
 
-int qapproxequal(const q_t a, const q_t b, const q_t epsilon) { 
+int qapproxequal(const q_t a, const q_t b, const q_t epsilon) { /**@todo test this, compare with qwithin in 't.c'*/
 	assert(qeqmore(epsilon, qint(0))); 
 	return qless(qabs(qsub(a, b)), epsilon); 
 }
@@ -186,6 +186,11 @@ int qapproxequal(const q_t a, const q_t b, const q_t epsilon) {
 int qapproxunequal(const q_t a, const q_t b, const q_t epsilon) { 
 	return !qapproxequal(a, b, epsilon); 
 }
+
+
+/*int qwithin(const q_t value, const q_t lower, const q_t upper) {
+	return qeqmore(value, lower) && qeqless(value, upper);
+}*/
 
 /** @todo create a conversion routine that takes three numbers:
      integer, fractional, divisor

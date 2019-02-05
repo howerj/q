@@ -76,6 +76,8 @@ int qeqless(q_t a, q_t b);
 int qeqmore(q_t a, q_t b);
 int qequal(q_t a, q_t b); /**@todo add approximate equality/inequality */
 int qunequal(q_t a, q_t b);
+int qapproxequal(q_t a, q_t b, q_t epsilon);
+int qapproxunequal(q_t a, q_t b, q_t epsilon);
 
 int qtoi(q_t toi);
 q_t qint(int toq);
@@ -145,6 +147,7 @@ q_t qcosh(q_t a);
 q_t qtanh(q_t a);
 void qsincosh(q_t a, q_t *sinh, q_t *cosh);
 
+/**@todo remove these from header once library is complete */
 q_t qcordic_ln(q_t d);         /* CORDIC testing only */
 q_t qcordic_exp(q_t e);        /* CORDIC testing only; useless for large values */
 q_t qcordic_sqrt(q_t a);       /* CORDIC testing only; do not use, a <= 2, a >= 0 */
