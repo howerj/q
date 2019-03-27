@@ -967,3 +967,41 @@ q_t qpid_update(qpid_t *pid, const q_t error, const q_t position) {
 
 /********* PID Controller ****************************************************/
 
+/********* Sine/Cosine By Another Method *************************************/
+/* See <https://github.com/jamesbowman/sincos> 
+ * and "Math Toolkit for Real-Time Programming" by Jack Crenshaw */
+#if 0
+// TODO:
+// - Convert to Q format before/after calculation
+static int16_t _sine(const int16_t y) {
+	const int16_t s1 = 0x6487, s3 = -0x2953, s5 = 0x04f8;
+	const int16_t z = arshift((int32_t)y * y, 12);
+	int16_t prod = arshift((int32_t)z * s5, 16);
+	int16_t sum = s3 + prod;
+	prod = arshift((int32_t)z * sum, 16);
+	sum = s1 + prod;
+	return arshift((int32_t)y * sum,  13);
+}
+
+static int16_t _cosine(int16_t y) {
+	const int16_t c0 = 0x7fff, c2 = -0x4ee9, c4 = 0x0fbd;
+	const int16_t z = arshift((int32_t)y * y, 12);
+	int16_t prod = arshift((int32_t)z * c4,  16);
+	const int16_t sum = c2 + prod;
+	prod = arshift((int32_t)z * sum, 15);
+	return c0 + prod;
+}
+
+int16_t sine(int16_t x) {
+	const int16_t n = 3 & arshift(x + 0x2000, 14);
+	x -= n << 14;
+	const int16_t r = (n & 1) ? _cosine(x) : _sine(x);
+	return (n & 2) ? -r : r;
+}
+
+int16_t cosine(int16_t x) {
+	return sine(x + 0x4000);
+}
+#endif
+/********* Sine/Cosine By Another Method *************************************/
+
