@@ -1,4 +1,4 @@
-CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic -fwrapv
+CFLAGS=-std=c99 -g -Wall -Wextra -O2 -pedantic -fwrapv
 CC=gcc
 TARGET=q
 RM=rm -fv
@@ -7,7 +7,7 @@ RANLIB=ranlib
 
 .PHONY: all run clean
 
-all: ${TARGET}
+all: ${TARGET} expr
 
 run: test ${TARGET} t.q
 	./${TARGET} t.q
@@ -27,5 +27,7 @@ check: *.c *.h
 
 ${TARGET}: lib${TARGET}.a t.o
 
+expr: lib${TARGET}.a expr.o
+
 clean:
-	${RM} ${TARGET} *.a *.o
+	${RM} ${TARGET} expr *.a *.o

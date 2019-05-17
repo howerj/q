@@ -18,6 +18,7 @@
  * 	the C library.
  * 	- Assert inputs are in correct domain, better unit tests
  * 	- Configuration options for different methods of evaluation;
+ * 	- Add matrix functions
  * NOTES:
  * 	- <https://en.wikipedia.org/wiki/Modulo_operation>
  *	- move many of the smaller functions to the header, make inline with 
@@ -43,26 +44,7 @@
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 #define IMPLIES(X, Y)           (!(X) || (Y))
 
-#define BITS  (16)
-#define MASK  ((1ULL <<  BITS) - 1ULL)
-#define HIGH   (1ULL << (BITS  - 1ULL))
-
-#define MULTIPLIER (INT16_MAX)
-#define UMAX  (UINT32_MAX)
-#define DMIN  (INT32_MIN)
-#define DMAX  (INT32_MAX)
-#define LUMAX (UINT64_MAX)
-#define LDMIN (INT64_MIN)
-#define LDMAX (INT64_MAX)
-
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
-#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
-#define QMK(HIGH, LOW, SF) ((ld_t)((((lu_t)HIGH) << BITS) | (MASK & ((((lu_t)LOW) << BITS) >> (SF)))))
-#define QINT(INT)          ((q_t)((u_t)(INT) << BITS))
-#define QPI (QMK(0x3, 0x243F, 16))
-
 typedef  int16_t hd_t; /* half Q width,      signed */
-typedef uint32_t  u_t; /* same width as Q, unsigned, but not in Q format */
 typedef uint64_t lu_t; /* double Q width,  unsigned */
 
 const qinfo_t qinfo = {
@@ -138,6 +120,7 @@ static inline u_t qhigh(const q_t q) { return ((u_t)q) >> BITS; }
 static inline u_t qlow(const q_t q)  { return ((u_t)q) & MASK; }
 static inline q_t qcons(const u_t hi, const u_t lo) { return (hi << BITS) | (lo & MASK); }
 
+/**@todo move many of these to the header, so they can be inlined */
 int qisnegative(const q_t a)            { return !!(qhigh(a) & HIGH); }
 int qispositive(const q_t a)            { return  !(qhigh(a) & HIGH); }
 int qisinteger(const q_t a)             { return  !qlow(a); }
@@ -967,6 +950,138 @@ q_t qpid_update(qpid_t *pid, const q_t error, const q_t position) {
 
 /********* PID Controller ****************************************************/
 
+/********* Simpsons method for numerical Integration *************************/
+/* From "Math Toolkit for Real-Time Programming" by Jack Crenshaw */
+/* TODO: Test this */
+
+q_t qsimpson(q_t (*f)(q_t), q_t x1, q_t x2, unsigned n) {
+	assert(f);
+	assert((n & 1) == 0);
+	const q_t h = qdiv(qsub(x2, x1), n);
+	q_t sum = 0, x = x1;
+	for(unsigned i = 0; i < (n / 2u); i++){
+		sum = qadd(sum, qadd(f(x), qmul(QINT(2), f(qadd(x,h)))));
+		x   = qadd(x, qmul(QINT(2), h));
+	}
+	sum = qsub(qmul(QINT(2), sum), qadd(f(x1), f(x2)));
+	return qdiv(qmul(h,sum), QINT(3));
+}
+
+/********* Simpsons method for numerical Integration *************************/
+/********* Matrix Operations *************************************************/
+/* NOTE: Instead of having a structure containing a matrix, a simple array
+ of q_t values, with the first two elements being 'uint32_t' row/column
+ values might be better. 
+ 
+TODO: Add rotate, factorization, function application, and other matrix operations */
+
+int qmatrix_zero(qmatrix_t *r) {
+	assert(r);
+	q_t *mr = r->m;
+	for (size_t i = 0; i < r->rows; i++)
+		for (size_t j = 0; j < r->columns; j++)
+			mr[i*r->rows + j] = QINT(0);
+	return 0;
+}
+
+int qmatrix_mul(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b) {
+	assert(a);
+	assert(b);
+	assert(r);
+	q_t *mr = r->m;
+	const q_t *ma = a->m, *mb = b->m;
+	if (a->columns != b->rows)
+		return -1;
+	for (size_t i = 0; i < a->rows; i++)
+		for (size_t j = 0; j < b->columns; j++) {
+			q_t s = QINT(0);
+			for(size_t k = 0; k < b->rows; k++)
+				s = qadd(s, qmul(ma[i*a->rows + k], mb[k*b->rows + j]));
+			mr[i*a->rows + j] = s;
+		}
+	return 0;
+}
+
+int qmatrix_add(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b) {
+	assert(a);
+	assert(b);
+	assert(r);
+       	const q_t *ma = a->m, *mb = b->m;
+	q_t *mr = r->m;
+	const size_t rows = a->rows, columns = b->columns;
+	if ((a->rows != b->rows) || (a->columns != b->columns))
+		return -1;
+	if ((a->rows != r->rows) || (a->columns != r->columns))
+		return -1;
+	for (size_t i = 0; i < rows; i++)
+		for (size_t j = 0; j < columns; j++) {
+			const size_t idx = (i*rows) + j;
+			mr[idx] = qadd(ma[idx], mb[idx]); 
+		}
+	return 0;
+}
+
+int qmatrix_sub(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b) {
+	assert(a);
+	assert(b);
+	assert(r);
+       	const q_t *ma = a->m, *mb = b->m;
+	q_t *mr = r->m;
+	const size_t rows = a->rows, columns = b->columns;
+	if ((a->rows != b->rows) || (a->columns != b->columns))
+		return -1;
+	if ((a->rows != r->rows) || (a->columns != r->columns))
+		return -1;
+	for (size_t i = 0; i < rows; i++)
+		for (size_t j = 0; j < columns; j++) {
+			const size_t idx = (i*rows) + j;
+			mr[idx] = qsub(ma[idx], mb[idx]); 
+		}
+	return 0;
+}
+
+static int addchar(char **str, size_t *length, const int ch) {
+	assert(str && *str);
+	assert(length);
+	if (!length)
+		return -1;
+	char *s = *str;
+	*s++ = ch;
+	*str = s;
+	*length += 1;
+	return 0;
+}
+
+int qmatrix_sprintb(const qmatrix_t *m, char *str, size_t length, unsigned base) {
+	assert(str);
+	assert(m);
+	if (base < 2 || base > 36)
+		return -1;
+	if (addchar(&str, &length, '[') < 0)
+		return -1;
+	if (addchar(&str, &length, ' ') < 0)
+		return -1;
+	for (size_t i = 0; i < m->rows; i++) {
+		for (size_t j = 0; j < m->columns; j++) {
+			const int r = qsprintb(m->m[i*m->rows + j], str, length, base);
+			if (r < 0)
+				return -1;
+			length -= r;
+			str    += r;
+			if (m->rows)
+				if (addchar(&str, &length, m->columns && j < (m->columns - 1) ? ',' : i < m->rows - 1 ? ';' : ' ') < 0)
+					return -1;
+			if ((m->columns && j < (m->columns - 1)) || (i < (m->rows - 1)))
+				if (addchar(&str, &length, ' ') < 0)
+					return -1;
+		}
+	}
+	if (addchar(&str, &length, ']') < 0)
+		return -1;
+	return 0;
+}
+
+/********* Matrix Operations *************************************************/
 /********* Sine/Cosine By Another Method *************************************/
 /* See <https://github.com/jamesbowman/sincos> 
  * and "Math Toolkit for Real-Time Programming" by Jack Crenshaw */

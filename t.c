@@ -17,7 +17,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HIGH (1ULL << (qinfo.fractional - 1))
 #define N    (16)
 
 typedef q_t (*function_unary_arith_t)(q_t a);
@@ -592,6 +591,20 @@ numbers of the form '-12.45'. 'expected' is the expected result,\n\
 
 int main(int argc, char **argv) {
 	bool ran = false;
+#if 0
+	char as[256] = { 0 }, bs[256] = { 0 }, cs[256] = { 0 };
+	static qmatrix_t a = { 2, 2, { QINT(1), QINT(2), QINT(3), QINT(4) } };
+	static qmatrix_t b = { 2, 2, { QINT(2), QINT(3), QINT(4), QINT(5) } };
+	static qmatrix_t c = { 2, 2, { QINT(0), QINT(0), QINT(0), QINT(0) } };
+	qmatrix_sprintb(&a, as, sizeof as, 10);
+	printf("%s\n", as);
+	qmatrix_sprintb(&b, bs, sizeof bs, 10);
+	printf("%s\n", bs);
+	qmatrix_mul(&c, &a, &b);
+	qmatrix_sprintb(&c, cs, sizeof cs, 10);
+	printf("%s\n", cs);
+	return 0;
+#endif
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp("-h", argv[i])) {

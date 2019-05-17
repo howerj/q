@@ -15,9 +15,28 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 
-typedef int32_t q_t;  /**< Q Fixed Point Number, (Q16.16, Signed) */
+#define BITS  (16)
+#define MASK  ((1ULL <<  BITS) - 1ULL)
+#define HIGH   (1ULL << (BITS  - 1ULL))
+
+#define MULTIPLIER (INT16_MAX)
+#define UMAX  (UINT32_MAX)
+#define DMIN  (INT32_MIN)
+#define DMAX  (INT32_MAX)
+#define LUMAX (UINT64_MAX)
+#define LDMIN (INT64_MIN)
+#define LDMAX (INT64_MAX)
+
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
+#define QMK(HIGH, LOW, SF) ((ld_t)((((lu_t)HIGH) << BITS) | (MASK & ((((lu_t)LOW) << BITS) >> (SF)))))
+#define QINT(INT)          ((q_t)((u_t)(INT) << BITS))
+#define QPI (QMK(0x3, 0x243F, 16))
+
+typedef int32_t  q_t; /**< Q Fixed Point Number, (Q16.16, Signed) */
 typedef int64_t ld_t; /**< Double width of Q, signed, for internal calculations, not in Q format */
 typedef int32_t  d_t; /* same width as Q,  signed, but not in Q format */
+typedef uint32_t u_t; /* same width as Q, unsigned, but not in Q format */
 
 typedef struct {
 	size_t whole,      /**< number of bits for whole, or integer, part of Q number */
@@ -35,6 +54,11 @@ typedef struct {
 	      max;       /**< most positive 'q' number */
 	/**@todo document type of division, rounding behavior, etcetera */
 } qinfo_t;
+
+typedef struct {
+	size_t rows, columns;
+	q_t m[];
+} qmatrix_t;
 
 typedef struct {
 	q_t rc,        /**< time constant */
@@ -168,12 +192,21 @@ d_t arshift(d_t v, unsigned p);
 int qpack(const q_t *q, char *buffer, size_t length);
 int qunpack(q_t *q, const char *buffer, size_t length);
 
+q_t qsimpson(q_t (*f)(q_t), q_t x1, q_t x2, unsigned n); /* numerical integrator of f, between x1, x2, for n steps */
+
 void qfilter_init(qfilter_t *f, q_t time, q_t rc, q_t seed);
 q_t qfilter_low_pass(qfilter_t *f, q_t time, q_t data);
 q_t qfilter_high_pass(qfilter_t *f, q_t time, q_t data);
 q_t qfilter_value(const qfilter_t *f);
 
 q_t qpid_update(qpid_t *pid, const q_t error, const q_t position);
+
+int qmatrix_zero(qmatrix_t *r);
+int qmatrix_add(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b);
+int qmatrix_sub(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b);
+int qmatrix_mul(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b);
+int qmatrix_sprintb(const qmatrix_t *m, char *str, size_t length, unsigned base);
+
 
 #ifdef __cplusplus
 }
