@@ -43,6 +43,15 @@
 
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 #define IMPLIES(X, Y)           (!(X) || (Y))
+#define MULTIPLIER (INT16_MAX)
+#define UMAX  (UINT32_MAX)
+#define DMIN  (INT32_MIN)
+#define DMAX  (INT32_MAX)
+#define LUMAX (UINT64_MAX)
+#define LDMIN (INT64_MIN)
+#define LDMAX (INT64_MAX)
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 
 typedef  int16_t hd_t; /* half Q width,      signed */
 typedef uint64_t lu_t; /* double Q width,  unsigned */
@@ -160,6 +169,7 @@ q_t qars(const q_t a, const q_t b)      { return arshift(a, qtoi(b)); }
 q_t qals(const q_t a, const q_t b)      { return qsat((lu_t)a << b); }
 q_t qsign(const q_t a)                  { return qisnegative(a) ? -QINT(1) : QINT(1); }
 q_t qsignum(const q_t a)                { return a ? qsign(a) : QINT(0); }
+// Add rotate, bit count, binary logarithm, ... */
 
 int qapproxequal(const q_t a, const q_t b, const q_t epsilon) { /**@todo test this, compare with qwithin in 't.c'*/
 	assert(qeqmore(epsilon, qint(0))); 
@@ -169,7 +179,6 @@ int qapproxequal(const q_t a, const q_t b, const q_t epsilon) { /**@todo test th
 int qapproxunequal(const q_t a, const q_t b, const q_t epsilon) { 
 	return !qapproxequal(a, b, epsilon); 
 }
-
 
 /*int qwithin(const q_t value, const q_t lower, const q_t upper) {
 	return qeqmore(value, lower) && qeqless(value, upper);

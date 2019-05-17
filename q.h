@@ -19,16 +19,6 @@ extern "C" {
 #define MASK  ((1ULL <<  BITS) - 1ULL)
 #define HIGH   (1ULL << (BITS  - 1ULL))
 
-#define MULTIPLIER (INT16_MAX)
-#define UMAX  (UINT32_MAX)
-#define DMIN  (INT32_MIN)
-#define DMAX  (INT32_MAX)
-#define LUMAX (UINT64_MAX)
-#define LDMIN (INT64_MIN)
-#define LDMAX (INT64_MAX)
-
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
-#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define QMK(HIGH, LOW, SF) ((ld_t)((((lu_t)HIGH) << BITS) | (MASK & ((((lu_t)LOW) << BITS) >> (SF)))))
 #define QINT(INT)          ((q_t)((u_t)(INT) << BITS))
 #define QPI (QMK(0x3, 0x243F, 16))
@@ -98,7 +88,7 @@ int qless(q_t a, q_t b);
 int qmore(q_t a, q_t b);
 int qeqless(q_t a, q_t b);
 int qeqmore(q_t a, q_t b);
-int qequal(q_t a, q_t b); /**@todo add approximate equality/inequality */
+int qequal(q_t a, q_t b);
 int qunequal(q_t a, q_t b);
 int qapproxequal(q_t a, q_t b, q_t epsilon);
 int qapproxunequal(q_t a, q_t b, q_t epsilon);
@@ -171,7 +161,6 @@ q_t qcosh(q_t a);
 q_t qtanh(q_t a);
 void qsincosh(q_t a, q_t *sinh, q_t *cosh);
 
-/**@todo remove these from header once library is complete */
 q_t qcordic_ln(q_t d);         /* CORDIC testing only */
 q_t qcordic_exp(q_t e);        /* CORDIC testing only; useless for large values */
 q_t qcordic_sqrt(q_t a);       /* CORDIC testing only; do not use, a <= 2, a >= 0 */

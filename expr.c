@@ -1,37 +1,25 @@
-/**@brief   Small Expression Evaluator
+/**@brief   Small Expression Evaluator for Q library
  * @license MIT
  * @author Richard James Howe
- * See: <https://en.wikipedia.org/wiki/Shunting-yard_algorithm>
- *
- * TODO:
- * - Turn into small library
- * - Add min, max, abs, sqrt, ...
- * - Add to <https://github.com/howerj/q>
- * - Add to <https://github.com/howerj/picol>
- * - Add to assembler for <https://github.com/howerj/bit-serial> */
+ * See: <https://en.wikipedia.org/wiki/Shunting-yard_algorithm> */
 
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
-#include <math.h> /* Not needed if USE_FLOAT == 0 */
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "q.h"
 
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 #define UNUSED(X)               ((void)(X))
-#define USE_FLOAT               (0)
 #define MAX_ID                  (32)
 #define MAX_ERROR               (256)
 #define DEFAULT_STACK_SIZE      (64)
 #define implies(X, Y)           assert(!(X) || (Y))
 
-#if USE_FLOAT == 0
-typedef int number_t;
-#else
-typedef double number_t;
-#endif
+typedef q_t number_t;
 
 enum { ASSOCIATE_NONE, ASSOCIATE_LEFT, ASSOCIATE_RIGHT };
 enum { LEX_NUMBER, LEX_OPERATOR, LEX_END };
@@ -119,53 +107,32 @@ static int error(eval_t *e, const char *fmt, ...) {
 }
 
 static number_t numberify(const char *s) {
-	if (USE_FLOAT)
-		return atof(s);
-	return atol(s);
+	q_t q = 0;
+	(void) qconv(&q, s);
+	return q;
 }
 
-static inline number_t op_negate (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return -a; }
-static inline number_t op_invert (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return ~(bit_t)a; }
+static inline number_t op_negate (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return qnegate(a); }
+static inline number_t op_invert (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return qinvert(a); }
 static inline number_t op_not    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return !a; }
-static inline number_t op_mul    (eval_t *e, number_t a, number_t b) { assert(e); return a * b; }
-static inline number_t op_add    (eval_t *e, number_t a, number_t b) { assert(e); return a + b; }
-static inline number_t op_sub    (eval_t *e, number_t a, number_t b) { assert(e); return a - b; }
-static inline number_t op_and    (eval_t *e, number_t a, number_t b) { assert(e); return (bit_t)a & (bit_t)b; }
-static inline number_t op_or     (eval_t *e, number_t a, number_t b) { assert(e); return (bit_t)a | (bit_t)b; }
-static inline number_t op_xor    (eval_t *e, number_t a, number_t b) { assert(e); return (bit_t)a ^ (bit_t)b; }
-static inline number_t op_lshift (eval_t *e, number_t a, number_t b) { assert(e); return (bit_t)a << (bit_t)b; }
-static inline number_t op_rshift (eval_t *e, number_t a, number_t b) { assert(e); return (bit_t)a >> (bit_t)b; }
-static inline number_t op_less   (eval_t *e, number_t a, number_t b) { assert(e); return a < b; }
-static inline number_t op_more   (eval_t *e, number_t a, number_t b) { assert(e); return a > b; }
-static inline number_t op_eqless (eval_t *e, number_t a, number_t b) { assert(e); return a <= b; }
-static inline number_t op_eqmore (eval_t *e, number_t a, number_t b) { assert(e); return a >= b; }
-static inline number_t op_equal  (eval_t *e, number_t a, number_t b) { assert(e); return a == b; }
-static inline number_t op_unequal(eval_t *e, number_t a, number_t b) { assert(e); return a != b; }
+static inline number_t op_mul    (eval_t *e, number_t a, number_t b) { assert(e); return qmul(a, b); }
+static inline number_t op_add    (eval_t *e, number_t a, number_t b) { assert(e); return qadd(a, b); }
+static inline number_t op_sub    (eval_t *e, number_t a, number_t b) { assert(e); return qsub(a, b); }
+static inline number_t op_and    (eval_t *e, number_t a, number_t b) { assert(e); return qand(a, b); }
+static inline number_t op_or     (eval_t *e, number_t a, number_t b) { assert(e); return qor(a, b); }
+static inline number_t op_xor    (eval_t *e, number_t a, number_t b) { assert(e); return qxor(a, b); }
+static inline number_t op_lshift (eval_t *e, number_t a, number_t b) { assert(e); return qlls(a, b); }
+static inline number_t op_rshift (eval_t *e, number_t a, number_t b) { assert(e); return qlrs(a, b); }
+static inline number_t op_less   (eval_t *e, number_t a, number_t b) { assert(e); return QINT(qless(a, b)); }
+static inline number_t op_more   (eval_t *e, number_t a, number_t b) { assert(e); return QINT(qmore(a, b)); }
+static inline number_t op_eqless (eval_t *e, number_t a, number_t b) { assert(e); return QINT(qeqless(a, b)); }
+static inline number_t op_eqmore (eval_t *e, number_t a, number_t b) { assert(e); return QINT(qeqmore(a, b)); }
+static inline number_t op_equal  (eval_t *e, number_t a, number_t b) { assert(e); return QINT(qequal(a, b)); }
+static inline number_t op_unequal(eval_t *e, number_t a, number_t b) { assert(e); return QINT(qunequal(a, b)); }
 
-static inline number_t op_sin    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return sin(a); }
-static inline number_t op_cos    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return cos(a); }
-static inline number_t op_tan    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return tan(a); }
-static inline number_t op_asin   (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return asin(a); }
-static inline number_t op_acos   (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return acos(a); }
-static inline number_t op_atan   (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return atan(a); }
-static inline number_t op_log    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return log(a); }
-static inline number_t op_exp    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return exp(a); }
-
-static inline number_t op_pow(eval_t *e, number_t b, number_t a) {
-	assert(e);
-	if (USE_FLOAT)
-		return pow(a, b);
-	number_t r = 1;
-	for (;;) {
-		if ((bit_t)a & (bit_t)1u)
-			r *= b;
-		a = a / 2;
-		if (!a)
-			break;
-		b *= b;
-	}
-	return r;
-}
+static inline number_t op_sin    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return qsin(a); }
+static inline number_t op_cos    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return qcos(a); }
+static inline number_t op_tan    (eval_t *e, number_t a, number_t b) { assert(e); UNUSED(b); return qtan(a); }
 
 static number_t op_div(eval_t *e, number_t a, number_t b) {
 	assert(e);
@@ -173,14 +140,7 @@ static number_t op_div(eval_t *e, number_t a, number_t b) {
 		error(e, "division by zero");
 		return 0; /* error handled later */
 	}
-	if (!USE_FLOAT) {
-		BUILD_BUG_ON(!USE_FLOAT && sizeof(number_t) != sizeof(int));
-		if (a == INT_MIN && b == -1) {
-			error(e, "overflow in division");
-			return 0;
-		}
-	}
-	return a / b;
+	return qdiv(a , b);
 }
 
 static number_t op_mod(eval_t *e, number_t a, number_t b) {
@@ -189,42 +149,12 @@ static number_t op_mod(eval_t *e, number_t a, number_t b) {
 		error(e, "division by zero");
 		return 0; /* error handled later */
 	}
-	if (USE_FLOAT)
-		return fmod(a, b);
-	if (!USE_FLOAT) {
-		BUILD_BUG_ON(!USE_FLOAT && sizeof(number_t) != sizeof(int));
-		if (a == INT_MIN && b == -1) {
-			error(e, "overflow in division");
-			return 0;
-		}
-	}
-	return (bit_t)a % (bit_t)b;
-}
-
-static inline number_t op_rotl(eval_t *e, number_t a, number_t b) {
-	assert(e);
-	bit_t value = a, shift = b;
-	BUILD_BUG_ON(!USE_FLOAT && (sizeof(number_t) != sizeof(bit_t)));
-	shift &= (sizeof(value) * CHAR_BIT) - 1u;
-	if (!shift)
-		return value;
-	return (value << shift) | (value >> ((sizeof(value) * CHAR_BIT) - shift));
-}
-
-static inline number_t op_rotr(eval_t *e, number_t a, number_t b) {
-	assert(e);
-	bit_t value = a, shift = b;
-	BUILD_BUG_ON(!USE_FLOAT && (sizeof(number_t) != sizeof(bit_t)));
-	shift &= (sizeof(value) * CHAR_BIT) - 1u;
-	if (!shift)
-		return value;
-	return (value >> shift) | (value << ((sizeof(value) * CHAR_BIT) - shift));
+	return qrem(a, b);
 }
 
 static const operations_t *op_get(const char *op) {
 	assert(op);
 	static const operations_t ops[] = { // Binary Search Table
-	#if USE_FLOAT == 0
 		{  "!",       op_not,      5,  1,  ASSOCIATE_RIGHT,  },
 		{  "!=",      op_unequal,  2,  0,  ASSOCIATE_LEFT,   },
 		{  "%",       op_mod,      3,  0,  ASSOCIATE_LEFT,   },
@@ -243,38 +173,12 @@ static const operations_t *op_get(const char *op) {
 		{  ">=",      op_eqmore,   2,  0,  ASSOCIATE_LEFT,   },
 		{  ">>",      op_rshift,   4,  0,  ASSOCIATE_RIGHT,  },
 		{  "^",       op_xor,      2,  0,  ASSOCIATE_LEFT,   },
-		{  "negate",  op_negate,   5,  1,  ASSOCIATE_RIGHT,  },
-		{  "pow",     op_pow,      4,  0,  ASSOCIATE_RIGHT,  },
-		{  "rotl",    op_rotl,     4,  0,  ASSOCIATE_RIGHT,  },
-		{  "rotr",    op_rotr,     4,  0,  ASSOCIATE_RIGHT,  },
-		{  "|",       op_or,       2,  0,  ASSOCIATE_LEFT,   },
-		{  "~",       op_invert,   5,  1,  ASSOCIATE_RIGHT,  },
-	#else
-		{  "!",       op_not,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "!=",      op_unequal,  2,  0,  ASSOCIATE_LEFT,   },
-		{  "%",       op_mod,      3,  0,  ASSOCIATE_LEFT,   },
-		{  "(",       NULL,        0,  0,  ASSOCIATE_NONE,   },
-		{  ")",       NULL,        0,  0,  ASSOCIATE_NONE,   },
-		{  "*",       op_mul,      3,  0,  ASSOCIATE_LEFT,   },
-		{  "+",       op_add,      2,  0,  ASSOCIATE_LEFT,   },
-		{  "-",       op_sub,      2,  0,  ASSOCIATE_LEFT,   },
-		{  "/",       op_div,      3,  0,  ASSOCIATE_LEFT,   },
-		{  "<",       op_less,     2,  0,  ASSOCIATE_LEFT,   },
-		{  "<=",      op_eqless,   2,  0,  ASSOCIATE_LEFT,   },
-		{  "==",      op_equal,    2,  0,  ASSOCIATE_LEFT,   },
-		{  ">",       op_more,     2,  0,  ASSOCIATE_LEFT,   },
-		{  ">=",      op_eqmore,   2,  0,  ASSOCIATE_LEFT,   },
-		{  "acos",    op_acos,     5,  1,  ASSOCIATE_RIGHT,  },
-		{  "asin",    op_asin,     5,  1,  ASSOCIATE_RIGHT,  },
-		{  "atan",    op_atan,     5,  1,  ASSOCIATE_RIGHT,  },
 		{  "cos",     op_cos,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "exp",     op_exp,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "log",     op_log,      5,  1,  ASSOCIATE_RIGHT,  },
 		{  "negate",  op_negate,   5,  1,  ASSOCIATE_RIGHT,  },
-		{  "pow",     op_pow,      4,  0,  ASSOCIATE_RIGHT,  },
 		{  "sin",     op_sin,      5,  1,  ASSOCIATE_RIGHT,  },
 		{  "tan",     op_tan,      5,  1,  ASSOCIATE_RIGHT,  },
-	#endif
+		{  "|",       op_or,       2,  0,  ASSOCIATE_LEFT,   },
+		{  "~",       op_invert,   5,  1,  ASSOCIATE_RIGHT,  },
 	};
 	const size_t length = (sizeof ops / sizeof ops[0]);
 	size_t l = 0, r = length - 1;
@@ -485,20 +389,13 @@ static int lex(eval_t *e, const char **expr) {
 			int dot = 0;
 			for (; e->id_count < sizeof(e->id) && *s; s++) {
 				const int ch = *s;
-				if (!(isdigit(ch) || (USE_FLOAT && ch == '.' && !dot)))
+				if (!(isdigit(ch) || (ch == '.' && !dot)))
 					break;
 				e->id[e->id_count++] = ch;
 				if (ch == '.')
 					dot = 1;
 			}
-			if (USE_FLOAT) {
-				double d = 0;
-				if (sscanf(e->id, "%lf", &d) != 1)
-					r = -1;
-				e->number = d;
-			} else {
-				e->number = numberify(e->id);
-			}
+			e->number = numberify(e->id);
 		} else {
 			r = -1;
 		}
@@ -571,31 +468,31 @@ static inline int tests(FILE *out) {
 		number_t result;
 		const char *expr;
 	} tests[] = { // NB. Variables defined later.
-		{  -1,    0,   ""            },
-		{  -1,    0,   "("           },
-		{  -1,    0,   ")"           },
-		{  -1,    0,   "2**3"        },
-		{   0,    0,   "0"           },
-		{   0,    2,   "1+1"         },
-		{   0,   -1,   "-1"          },
-		{   0,    1,   "--1"         },
-		{   0,   14,   "2+(3*4)"     },
-		{   0,   23,   "a+(b*5)"     },
-		{  -1,   14,   "(2+(3* 4)"   },
-		{  -1,   14,   "2+(3*4)("    },
-		{   0,   14,   "2+3*4"       },
-		{   0,    0,   "  2==3 "     },
-		{   0,    1,   "2 ==2"       },
-		{   0,    1,   "2== (1+1)"   },
-		{   0,    8,   "2 pow 3"     },
-		{  -1,    0,   "2pow3"       },
-		{   0,   20,   "(2+3)*4"     },
-		{   0,   -4,   "(2+(-3))*4"  },
-		{  -1,    0,   "1/0"         },
-		{  -1,    0,   "1%0"         },
-		{   0,   50,   "100/2"       },
-		{   0,    2,   "1--1",       },
-		{   0,    0,   "1---1",      },
+		{  -1,  QINT( 0),   ""            },
+		{  -1,  QINT( 0),   "("           },
+		{  -1,  QINT( 0),   ")"           },
+		{  -1,  QINT( 0),   "2**3"        },
+		{   0,  QINT( 0),   "0"           },
+		{   0,  QINT( 2),   "1+1"         },
+		{   0, -QINT( 1),   "-1"          },
+		{   0,  QINT( 1),   "--1"         },
+		{   0,  QINT(14),   "2+(3*4)"     },
+		{   0,  QINT(23),   "a+(b*5)"     },
+		{  -1,  QINT(14),   "(2+(3* 4)"   },
+		{  -1,  QINT(14),   "2+(3*4)("    },
+		{   0,  QINT(14),   "2+3*4"       },
+		{   0,  QINT( 0),   "  2==3 "     },
+		{   0,  QINT( 1),   "2 ==2"       },
+		{   0,  QINT( 1),   "2== (1+1)"   },
+		//{   0,  QINT( 8),   "2 pow 3"     },
+		//{  -1,  QINT( 0),   "2pow3"       },
+		{   0,  QINT(20),   "(2+3)*4"     },
+		{   0, -QINT( 4),   "(2+(-3))*4"  },
+		{  -1,  QINT( 0),   "1/0"         },
+		{  -1,  QINT( 0),   "1%0"         },
+		{   0,  QINT(50),   "100/2"       },
+		{   0,  QINT( 2),   "1--1",       },
+		{   0,  QINT( 0),   "1---1",      },
 	};
 
 	fputs("Running Built In Self Tests:\n", out);
@@ -609,9 +506,9 @@ static inline int tests(FILE *out) {
 			goto end;
 		}
 
-		variable_t *v1 = variable_add(e, "a",  3);
-		variable_t *v2 = variable_add(e, "b",  4);
-		variable_t *v3 = variable_add(e, "c", -5);
+		variable_t *v1 = variable_add(e, "a",  QINT(3));
+		variable_t *v2 = variable_add(e, "b",  QINT(4));
+		variable_t *v3 = variable_add(e, "c", -QINT(5));
 		if (!v1 || !v2 || !v3) {
 			fprintf(out, "test failed (unable to assign variable)\n");
 			report = -1;
@@ -663,7 +560,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (expr_eval(e, argv[1]) == 0) {
-		printf(USE_FLOAT ? "%g\n" : "%d\n", e->numbers[0]);
+		char n[64] = { 0 };
+		qsprint(e->numbers[0], n, sizeof n);
+		printf("%s\n", n);
 		r = 0;
 		goto end;
 	} else {
