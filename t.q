@@ -238,5 +238,11 @@ asin    0.5235   +- 0.02 | .5
 asin   -0.5235   +- 0.02 | -.5
 asin   -1.1197   +- 0.02 | -.9
 # TODO: Test acos over negative values
+# More testing of these functions
 acos    1.0471   +- 0.02 | 0.5
 acos    0.4510   +- 0.02 | 0.9
+atan2   0.78539  +- 0.02 | 0.5 0.5
+atan2   1.10714  +- 0.02 | 2.0 1.0
+atan2   1.5707   +- 0.02 | 1. 0.
+atan2  -1.5707   +- 0.02 | -1. 0.
+atan2   2.6779   +- 0.02 | 0.5 -1.

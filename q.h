@@ -201,6 +201,7 @@ q_t qcot(q_t theta);
 q_t qhypot(q_t a, q_t b);
 
 q_t qatan(q_t t);
+q_t qatan2(q_t x, q_t y);
 q_t qasin(q_t t);
 q_t qacos(q_t t);
 q_t qsinh(q_t a);

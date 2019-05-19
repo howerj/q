@@ -6,13 +6,14 @@
  * @site <https://github.com/howerj/q>
  *
  *  TODO:
- * 	- basic mathematical functions (arcsin, arccosine, pow, ...)
  * 	- add modulo *and* remainder
  * 	  - <https://news.ycombinator.com/item?id=17817758>
  * 	  - <https://rob.conery.io/2018/08/21/mod-and-remainder-are-not-the-same/>
  * 	- work out bounds for all functions, especially for CORDIC
  * 	functions
- * 	- Assert inputs are in correct domain, better unit tests
+ * 	- Assert inputs are in correct domain, better unit tests, for the
+ * 	expression evaluator errors should be returned if the domain is
+ * 	incorrect instead.
  * 	- Configuration options for different methods of evaluation;
  * 	- Add matrix functions
  * NOTES:
@@ -654,6 +655,22 @@ q_t qatan(const q_t t) {
 	return z;
 }
 
+q_t qatan2(const q_t a, const q_t b) { // atan(a/b)
+	q_t x = b, y = a, z = QINT(0);
+	if (qequal(b, QINT(0))) {
+		assert(qunequal(a, QINT(0)));
+		if (qmore(a, QINT(0)))
+			return QPI/2;
+		return -(QPI/2);
+	} else if (qless(b, QINT(0))) {
+		if (qeqmore(a, QINT(0)))
+			return qadd(qatan(qdiv(a, b)), QPI);
+		return qsub(qatan(qdiv(a, b)), QPI);
+	}
+	cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
+	return z;
+}
+
 void qsincos(q_t theta, q_t *sine, q_t *cosine) {
 	assert(sine);
 	assert(cosine);
@@ -826,12 +843,13 @@ d_t dlog(d_t x, const unsigned base) { /* rounds up, look at remainder to round 
 	return b;
 }
 
-q_t qlog(const q_t x) {
+q_t qlog(q_t x) {
+	q_t logs = 0;
 	assert(qmore(x, 0));
 	static const q_t lmax = QMK(9, 0x8000, 16); /* 9.5, lower limit needs checking */
-	if (qmore(x, lmax)) /**@todo refactor so this is not recursive */
-		return qadd(qinfo.ln2, qlog(divn(x, 1)));
-	return qcordic_ln(x);
+	for(; qmore(x, lmax); x = divn(x, 1))
+		logs = qadd(logs, qinfo.ln2);
+	return qadd(logs, qcordic_ln(x));
 }
 
 q_t qexp(const q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
@@ -866,16 +884,17 @@ q_t qsqrt(const q_t x) { /* Newton Rhaphson method */
 	return qabs(guess); /* correct for overflow int very large numbers */
 }
 
-// @todo Use atan2
 q_t qasin(const q_t t) {
 	assert(qless(qabs(t), QINT(1)));
-	return qatan(qdiv(t, qsqrt(qsub(QINT(1), qmul(t, t)))));
+	/* can also use: return qatan(qdiv(t, qsqrt(qsub(QINT(1), qmul(t, t))))); */
+	return qatan2(t, qsqrt(qsub(QINT(1), qmul(t, t))));
 }
 
 q_t qacos(const q_t t) {
 	assert(qless(qabs(t), QINT(1)));
 	assert(qunequal(t, QINT(0)));
-	return qatan(qdiv(qsqrt(qsub(QINT(1), qmul(t, t))), t));
+	/* can also use: return qatan(qdiv(qsqrt(qsub(QINT(1), qmul(t, t))), t)); */
+	return qatan2(qsqrt(qsub(QINT(1), qmul(t, t))), t);
 }
 
 /********* Power / Logarithms ************************************************/
@@ -1340,9 +1359,18 @@ static q_t op_unequal(qexpr_t *e, q_t a, q_t b) { assert(e); return QINT(qunequa
 static q_t op_sin    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qsin(a); }
 static q_t op_cos    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qcos(a); }
 static q_t op_tan    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qtan(a); }
+static q_t op_asin   (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qasin(a); }
+static q_t op_acos   (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qacos(a); }
+static q_t op_atan   (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qatan(a); }
+
 static q_t op_exp    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qexp(a); }
 static q_t op_log    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qlog(a); }
-static q_t op_pow    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qpow(a, b); }
+static q_t op_pow    (qexpr_t *e, q_t a, q_t b) { assert(e); return qpow(a, b); }
+
+static q_t op_floor  (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qfloor(a); }
+static q_t op_ceil   (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qceil(a); }
+static q_t op_trunc  (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qtrunc(a); }
+static q_t op_round  (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qround(a); }
 
 static q_t op_div(qexpr_t *e, q_t a, q_t b) {
 	assert(e);
@@ -1383,13 +1411,20 @@ static const qoperations_t *op_get(const char *op) {
 		{  ">=",      op_eqmore,   2,  0,  ASSOCIATE_LEFT,   },
 		{  ">>",      op_rshift,   4,  0,  ASSOCIATE_RIGHT,  },
 		{  "^",       op_xor,      2,  0,  ASSOCIATE_LEFT,   },
+		{  "asin",    op_asin,     5,  1,  ASSOCIATE_RIGHT,  },
+		{  "acos",    op_acos,     5,  1,  ASSOCIATE_RIGHT,  },
+		{  "atan",    op_atan,     5,  1,  ASSOCIATE_RIGHT,  },
 		{  "cos",     op_cos,      5,  1,  ASSOCIATE_RIGHT,  },
+		{  "ceil",    op_ceil,     5,  1,  ASSOCIATE_RIGHT,  },
 		{  "exp",     op_exp,      5,  1,  ASSOCIATE_RIGHT,  },
+		{  "floor",   op_floor,    5,  1,  ASSOCIATE_RIGHT,  },
 		{  "log",     op_log,      5,  1,  ASSOCIATE_RIGHT,  },
 		{  "negate",  op_negate,   5,  1,  ASSOCIATE_RIGHT,  },
 		{  "pow",     op_pow,      5,  0,  ASSOCIATE_RIGHT,  },
+		{  "round",   op_round,    5,  1,  ASSOCIATE_RIGHT,  },
 		{  "sin",     op_sin,      5,  1,  ASSOCIATE_RIGHT,  },
 		{  "tan",     op_tan,      5,  1,  ASSOCIATE_RIGHT,  },
+		{  "trunc",   op_trunc,    5,  1,  ASSOCIATE_RIGHT,  },
 		{  "|",       op_or,       2,  0,  ASSOCIATE_LEFT,   },
 		{  "~",       op_invert,   5,  1,  ASSOCIATE_RIGHT,  },
 	};
