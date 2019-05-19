@@ -15,13 +15,32 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 
-#define BITS  (16)
-#define MASK  ((1ULL <<  BITS) - 1ULL)
-#define HIGH   (1ULL << (BITS  - 1ULL))
+#define QMAX_ID                  (32)
+#define QMAX_ERROR               (256)
 
-#define QMK(HIGH, LOW, SF) ((ld_t)((((lu_t)HIGH) << BITS) | (MASK & ((((lu_t)LOW) << BITS) >> (SF)))))
-#define QINT(INT)          ((q_t)((u_t)(INT) << BITS))
-#define QPI (QMK(0x3, 0x243F, 16))
+#define QBITS  (16)
+#define QMASK  ((1ULL <<  QBITS) - 1ULL)
+#define QHIGH   (1ULL << (QBITS  - 1ULL))
+
+#define QMK(QHIGH, LOW, SF) ((ld_t)((((lu_t)QHIGH) << QBITS) | (QMASK & ((((lu_t)LOW) << QBITS) >> (SF)))))
+#define QINT(INT)           ((q_t)((u_t)(INT) << QBITS))
+#define QPI                 (QMK(0x3, 0x243F, 16))
+
+#ifndef PREPACK
+#define PREPACK
+#endif
+
+#ifndef POSTPACK
+#define POSTPACK
+#endif
+
+#ifndef RESTRICT
+#ifdef __cplusplus
+#define RESTRICT
+#else
+#define RESTRICT restrict
+#endif
+#endif
 
 typedef int32_t  q_t; /**< Q Fixed Point Number, (Q16.16, Signed) */
 typedef int64_t ld_t; /**< Double width of Q, signed, for internal calculations, not in Q format */
@@ -31,24 +50,19 @@ typedef uint32_t u_t; /* same width as Q, unsigned, but not in Q format */
 typedef struct {
 	size_t whole,      /**< number of bits for whole, or integer, part of Q number */
 	       fractional; /**< number of bits for fractional part of Q number */
-	const q_t zero,  /**< the constant '0' */
-	      bit,       /**< smallest 'q' number representable  */
-	      one,       /**< the constant '1' */
-	      pi,        /**< the constant 'pi' */
-	      e,         /**< the constant 'e' */
-	      sqrt2,     /**< the square root of 2 */
-	      sqrt3,     /**< the square root of 3 */
-	      ln2,       /**< the natural logarithm of 2 */
-	      ln10,      /**< the natural logarithm of 10 */
-	      min,       /**< most negative 'q' number */
-	      max;       /**< most positive 'q' number */
+	const q_t zero,    /**< the constant '0' */
+	      bit,         /**< smallest 'q' number representable  */
+	      one,         /**< the constant '1' */
+	      pi,          /**< the constant 'pi' */
+	      e,           /**< the constant 'e' */
+	      sqrt2,       /**< the square root of 2 */
+	      sqrt3,       /**< the square root of 3 */
+	      ln2,         /**< the natural logarithm of 2 */
+	      ln10,        /**< the natural logarithm of 10 */
+	      min,         /**< most negative 'q' number */
+	      max;         /**< most positive 'q' number */
 	/**@todo document type of division, rounding behavior, etcetera */
 } qinfo_t;
-
-typedef struct {
-	size_t rows, columns;
-	q_t m[];
-} qmatrix_t;
 
 typedef struct {
 	q_t rc,        /**< time constant */
@@ -63,6 +77,38 @@ typedef struct {
 	q_t p_gain;                        /**< proportional gain */
 } qpid_t; /**< PID Controller <https://en.wikipedia.org/wiki/PID_controller> */
 
+struct qexpr;
+struct qoperations;
+typedef struct qexpr qexpr_t;
+typedef struct qoperations qoperations_t;
+
+struct qoperations {
+	char *name;
+	q_t (*eval) (qexpr_t *e, q_t a1, q_t a2);
+	int precedence, unary, assocativity;
+};
+
+typedef struct {
+	char *name;
+	q_t value;
+} qvariable_t; /**< Variable which can be used with the expression evaluator */
+
+struct qexpr {
+	const qoperations_t **ops, *lpar, *rpar, *negate, *minus;
+	qvariable_t **vars;
+	char id[QMAX_ID];
+	char error_string[QMAX_ERROR];
+	q_t number;
+	const qoperations_t *op;
+	q_t *numbers;
+	size_t ops_count, ops_max;
+	size_t numbers_count, numbers_max;
+	size_t id_count;
+	size_t vars_max;
+	int error;
+	int initialized;
+}; /**< An expression evaluator for the Q library */
+
 typedef q_t (*qbounds_t)(ld_t s);
 
 q_t qbound_saturate(ld_t s); /**< default over/underflow behavior, saturation */
@@ -70,14 +116,15 @@ q_t qbound_wrap(ld_t s);     /**< over/underflow behavior, wrap around */
 
 typedef struct {
 	qbounds_t bound; /**< handles saturation when a number over or underflows */
-	int dp;          /**< decimal points to print, negative specifies maximum precision will allow */
+	int dp;          /**< decimal points to print, negative specifies maximum precision */
 	unsigned base;   /**< base to use for numeric number conversion */
 } qconf_t; /**< Q format configuration options */
 
 extern const qinfo_t qinfo; /**< information about the format and constants */
 extern qconf_t qconf;       /**< @warning GLOBAL Q configuration options */
 
-/**@todo These should be inline-able... */
+/**@todo These should be inline-able...
+ * @todo These test functions should return Q numbers... */
 int qisnegative(q_t a);
 int qispositive(q_t a);
 int qisinteger(q_t a);
@@ -136,7 +183,7 @@ q_t qlrs(q_t a, q_t b);
 q_t qals(q_t a, q_t b);
 q_t qars(q_t a, q_t b);
 
-// q_t qpow(q_t n, q_t exp);
+q_t qpow(q_t n, q_t exp);
 
 /**@todo refactor/simplify these functions, there does not need to be so many of them */
 int qsprint(q_t p, char *s, size_t length);
@@ -153,9 +200,9 @@ q_t qtan(q_t theta);
 q_t qcot(q_t theta);
 q_t qhypot(q_t a, q_t b);
 
-//q_t qatan(q_t t);
-//q_t qasin(q_t t);
-//q_t qacos(q_t t);
+q_t qatan(q_t t);
+q_t qasin(q_t t);
+q_t qacos(q_t t);
 q_t qsinh(q_t a);
 q_t qcosh(q_t a);
 q_t qtanh(q_t a);
@@ -190,12 +237,48 @@ q_t qfilter_value(const qfilter_t *f);
 
 q_t qpid_update(qpid_t *pid, const q_t error, const q_t position);
 
-int qmatrix_zero(qmatrix_t *r);
-int qmatrix_add(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b);
-int qmatrix_sub(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b);
-int qmatrix_mul(qmatrix_t *r, const qmatrix_t *a, const qmatrix_t *b);
-int qmatrix_sprintb(const qmatrix_t *m, char *str, size_t length, unsigned base);
+/* A matrix consists of at least three elements, the length of the
+ * array (which must be big enough to store row*column, but may be
+ * larger) and a row and a column count in unsigned integer format, 
+ * and the array elements in Q format. This simplifies storage and 
+ * declaration of matrices.
+ *
+ * An example, the 2x3 matrix:
+ *
+ * 	[ 1, 2, 3; 4, 5, 6 ]
+ *
+ * Should be defined as:
+ *
+ * 	q_t m[] = { 2*3, 2, 3, QINT(1), QINT(2), QINT(3), QINT(4), QINT(5), QINT(6) };
+ *
+ */
 
+int qmatrix_unary_apply(q_t *r, const q_t *a, q_t (*func)(q_t));
+int qmatrix_binary_apply(q_t * RESTRICT r, const q_t *a, const q_t *b, q_t (*func)(q_t, q_t));
+int qmatrix_sprintb(const q_t *m, char *str, size_t length, unsigned base);
+int qmatrix_resize(q_t *m, const size_t row, const size_t column);
+int qmatrix_copy(q_t *r, const q_t *a);
+size_t qmatrix_string_length(const q_t *m);
+
+int qmatrix_zero(q_t *r);
+int qmatrix_one(q_t *r);
+int qmatrix_identity(q_t *r); /* turn into identity matrix, r must be square */
+
+q_t qmatrix_trace(const q_t *m);
+q_t qmatrix_determinant(const q_t *m);
+
+int qmatrix_is_square(const q_t *m);
+int qmatrix_is_valid(const q_t *m);
+
+int qmatrix_add(q_t * RESTRICT r, const q_t *a, const q_t *b);
+int qmatrix_sub(q_t * RESTRICT r, const q_t *a, const q_t *b);
+int qmatrix_mul(q_t * RESTRICT r, const q_t *a, const q_t *b);
+int qmatrix_transpose(q_t * RESTRICT r, const q_t * RESTRICT m);
+
+int qexpr(qexpr_t *e, const char *expr);
+int qexpr_init(qexpr_t *e);
+int qexpr_error(qexpr_t *e);
+q_t qexpr_result(qexpr_t *e);
 
 #ifdef __cplusplus
 }

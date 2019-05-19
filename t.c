@@ -18,6 +18,7 @@
 #include <string.h>
 
 #define N    (16)
+#define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 
 typedef q_t (*function_unary_arith_t)(q_t a);
 typedef int (*function_unary_propery_t)(q_t a);
@@ -64,7 +65,7 @@ static const function_t *lookup(char *op) {
 		{ .op.f = qals,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "alshift" },
 		{ .op.f = qlls,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "lshift" },
 		{ .op.f = qhypot,       .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "hypot" },
-		//{ .op.f = qpow,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "pow" },
+		{ .op.f = qpow,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "pow" },
 
 		{ .op.m = qnegate,      .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
 		{ .op.m = qtrunc,       .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
@@ -87,9 +88,9 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qsin,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
 		{ .op.m = qcos,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
 		{ .op.m = qtan,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "tan" },
-		//{ .op.m = qatan,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "atan" },
-		//{ .op.m = qasin,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "asin" },
-		//{ .op.m = qacos,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "acos" },
+		{ .op.m = qatan,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "atan" },
+		{ .op.m = qasin,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "asin" },
+		{ .op.m = qacos,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "acos" },
 		{ .op.m = qtanh,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "tanh" },
 		{ .op.m = qsinh,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sinh" },
 		{ .op.m = qcosh,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cosh" },
@@ -536,6 +537,85 @@ static inline int test_filter(void) {
 	return unit_test_finish(&t);
 }
 
+static int qmatrix_print(FILE *out, const q_t *m) {
+	assert(out);
+	assert(m);
+	const size_t alloc = qmatrix_string_length(m);
+	char *ms = malloc(alloc + 1);
+	if (!ms)
+		return -1;
+	int r = qmatrix_sprintb(m, ms, alloc + 1, 10);
+	if (r >= 0) 
+		r = fprintf(out, "%s\n", ms);
+	free(ms);
+	return r;
+}
+
+#define QMATRIX(ROW, COLUMN, ...) { ROW * COLUMN, ROW, COLUMN, __VA_ARGS__  }
+#define QMATRIXZ(ROW, COLUMN)     QMATRIX((ROW), (COLUMN), 0)
+#define QMATRIXSZ(ROW, COLUMN)    ((((ROW)*(COLUMN)) + 3)*sizeof(q_t))
+
+static int test_matrix(void) {
+	unit_test_t t = unit_test_start();
+	FILE *out = stdout;
+	q_t a[] = QMATRIX(2, 3, 
+			QINT(1), QINT(2), QINT(3), 
+			QINT(4), QINT(5), QINT(6)
+	);
+	q_t b[] = QMATRIX(3, 2, 
+			QINT(2), QINT(3), 
+			QINT(4), QINT(5), 
+			QINT(6), QINT(7)
+	);
+	const q_t abr[] = QMATRIX(2, 2,
+			QINT(28), QINT(34),
+			QINT(64), QINT(79)
+	);
+	const q_t abrp[] = QMATRIX(2, 2,
+			QINT(28), QINT(64),
+			QINT(34), QINT(79)
+	);
+	q_t ab[QMATRIXSZ(2, 2)]   = QMATRIXZ(2, 2);
+	q_t abp[QMATRIXSZ(2, 2)]  = QMATRIXZ(2, 2);
+	unit_test_verify(&t, 0 == qmatrix_mul(ab, a, b));
+	unit_test_verify(&t, 0 == qmatrix_transpose(abp, ab));
+	unit_test(&t, memcmp(ab, abr, sizeof ab));
+	unit_test(&t, memcmp(ab, abp, sizeof abrp));
+	qmatrix_print(out, a);
+	qmatrix_print(out, b);
+	qmatrix_print(out, ab);
+	qmatrix_print(out, abp);
+	return unit_test_finish(&t);
+}
+
+static int test_matrix_trace(void) {
+	unit_test_t t = unit_test_start();
+	q_t a[] = QMATRIX(2, 2,
+			QINT(1), QINT(2), 
+			QINT(4), QINT(5), 
+	);
+	q_t b[] = QMATRIX(2, 2,
+			QINT(2), QINT(3), 
+			QINT(4), QINT(5), 
+	);
+	q_t ta[sizeof(a) / sizeof(a[0])] = QMATRIX(2, 2, 0);
+	q_t tb[sizeof(b) / sizeof(b[0])] = QMATRIX(2, 2, 0);
+	q_t apb[sizeof(a) / sizeof(a[0])] = QMATRIX(2, 2, 0);
+	BUILD_BUG_ON(sizeof a != sizeof ta);
+	BUILD_BUG_ON(sizeof a != sizeof tb);
+	BUILD_BUG_ON(sizeof a != sizeof b);
+	BUILD_BUG_ON(sizeof a != sizeof apb);
+	unit_test_verify(&t, 0 == qmatrix_transpose(ta, a));
+	unit_test_verify(&t, 0 == qmatrix_transpose(tb, b));
+	unit_test_verify(&t, 0 == qmatrix_add(apb, a, b));
+	unit_test(&t, qequal(qmatrix_trace(a), QINT(6)));
+	unit_test(&t, qequal(qmatrix_trace(b), QINT(7)));
+	unit_test(&t, qequal(qmatrix_trace(a), qmatrix_trace(ta)));
+	unit_test(&t, qequal(qmatrix_trace(apb), qadd(qmatrix_trace(a), qmatrix_trace(b))));
+	printq(stdout, qmatrix_determinant(a), "det(a)");
+	return unit_test_finish(&t);
+}
+
 static int internal_tests(void) { /**@todo add more tests */
 	typedef int (*unit_test_t)(void);
 	unit_test_t tests[] = {
@@ -543,13 +623,13 @@ static int internal_tests(void) { /**@todo add more tests */
 		test_pack,
 		test_fma,
 		// test_filter,
+		test_matrix,
+		test_matrix_trace,
 		NULL
 	};
 	for (size_t i = 0; tests[i]; i++)
 		if (tests[i]() < 0)
 			return -1;
-
-
 	return 0;
 }
 
@@ -591,21 +671,6 @@ numbers of the form '-12.45'. 'expected' is the expected result,\n\
 
 int main(int argc, char **argv) {
 	bool ran = false;
-#if 0
-	char as[256] = { 0 }, bs[256] = { 0 }, cs[256] = { 0 };
-	static qmatrix_t a = { 2, 2, { QINT(1), QINT(2), QINT(3), QINT(4) } };
-	static qmatrix_t b = { 2, 2, { QINT(2), QINT(3), QINT(4), QINT(5) } };
-	static qmatrix_t c = { 2, 2, { QINT(0), QINT(0), QINT(0), QINT(0) } };
-	qmatrix_sprintb(&a, as, sizeof as, 10);
-	printf("%s\n", as);
-	qmatrix_sprintb(&b, bs, sizeof bs, 10);
-	printf("%s\n", bs);
-	qmatrix_mul(&c, &a, &b);
-	qmatrix_sprintb(&c, cs, sizeof cs, 10);
-	printf("%s\n", cs);
-	return 0;
-#endif
-
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp("-h", argv[i])) {
 			help(stdout, argv[0]);
