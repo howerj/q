@@ -16,11 +16,14 @@
  * 	incorrect instead.
  * 	- Configuration options for different methods of evaluation;
  * 	- Add matrix functions
+ * 	- 'Manual' versions of multiplication and division could be
+ * 	optionally selected.
  * NOTES:
  * 	- <https://en.wikipedia.org/wiki/Modulo_operation>
  *	- move many of the smaller functions to the header, make inline with 
  *	extern inline definitions here
- *	- clean up API, removing redundant functions
+ *	- clean up API, removing redundant functions, remove global options
+ *	and just use saturation.
  *	- improve number conversion functions; allow exponential format,
  *	'%g' format equivalent, allow custom base to be passed to functions
  *	instead of via a global.
@@ -128,17 +131,6 @@ static inline u_t qlow(const q_t q)  { return ((u_t)q) & QMASK; }
 static inline q_t qcons(const u_t hi, const u_t lo) { return (hi << QBITS) | (lo & QMASK); }
 
 /**@todo move many of these to the header, so they can be inlined */
-int qisnegative(const q_t a)            { return !!(qhigh(a) & QHIGH); }
-int qispositive(const q_t a)            { return  !(qhigh(a) & QHIGH); }
-int qisinteger(const q_t a)             { return  !qlow(a); }
-int qisodd(const q_t a)                 { return qisinteger(a) &&  (qhigh(a) & 1); }
-int qiseven(const q_t a)                { return qisinteger(a) && !(qhigh(a) & 1); }
-int qless(const q_t a, const q_t b)     { return a < b; }
-int qeqless(const q_t a, const q_t b)   { return a <= b; }
-int qmore(const q_t a, const q_t b)     { return a > b; }
-int qeqmore(const q_t a, const q_t b)   { return a >= b; }
-int qequal(const q_t a, const q_t b)    { return a == b; }
-int qunequal(const q_t a, const q_t b)  { return a != b; }
 int qtoi(const q_t toi)                 { return ((lu_t)((ld_t)toi)) >> QBITS; }
 q_t qint(const int toq)                 { return ((u_t)((d_t)toq)) << QBITS; }
 signed char qtoc(const q_t q)           { return qtoi(q); }
@@ -149,6 +141,19 @@ long qtol(const q_t q)                  { return qtoi(q); }
 q_t qlong(long l)                       { return qint(l); }
 long long qtoll(const q_t q)            { return qtoi(q); }
 q_t qvlong(long long ll)                { return qint(ll); }
+
+q_t qisnegative(const q_t a)            { return QINT(!!(qhigh(a) & QHIGH)); }
+q_t qispositive(const q_t a)            { return QINT( !(qhigh(a) & QHIGH)); }
+q_t qisinteger(const q_t a)             { return QINT( !qlow(a)); }
+q_t qisodd(const q_t a)                 { return QINT(qisinteger(a) &&  (qhigh(a) & 1)); }
+q_t qiseven(const q_t a)                { return QINT(qisinteger(a) && !(qhigh(a) & 1)); }
+q_t qless(const q_t a, const q_t b)     { return QINT(a < b); }
+q_t qeqless(const q_t a, const q_t b)   { return QINT(a <= b); }
+q_t qmore(const q_t a, const q_t b)     { return QINT(a > b); }
+q_t qeqmore(const q_t a, const q_t b)   { return QINT(a >= b); }
+q_t qequal(const q_t a, const q_t b)    { return QINT(a == b); }
+q_t qunequal(const q_t a, const q_t b)  { return QINT(a != b); }
+
 q_t qnegate(const q_t a)                { return (~(u_t)a) + 1ULL; }
 q_t qmin(const q_t a, const q_t b)      { return qless(a, b) ? a : b; }
 q_t qmax(const q_t a, const q_t b)      { return qmore(a, b) ? a : b; }
@@ -160,7 +165,9 @@ q_t qand(const q_t a, const q_t b)      { return a & b; }
 q_t qxor(const q_t a, const q_t b)      { return a ^ b; }
 q_t qor(const q_t a, const q_t b)       { return a | b; }
 q_t qinvert(const q_t a)                { return ~a; }
-/** @note Should the shifting functions accept an integer instead for their shift param? */
+q_t qnot(const q_t a)                   { return QINT(!a); }
+q_t qlogical(const q_t a)               { return QINT(!!a); }
+
 q_t qlrs(const q_t a, const q_t b)      { /* assert low bits == 0? */ return (u_t)a >> (u_t)qtoi(b); }
 q_t qlls(const q_t a, const q_t b)      { return (u_t)a << b; }
 q_t qars(const q_t a, const q_t b)      { return arshift(a, qtoi(b)); }
@@ -178,9 +185,19 @@ int qapproxunequal(const q_t a, const q_t b, const q_t epsilon) {
 	return !qapproxequal(a, b, epsilon); 
 }
 
-/*int qwithin(const q_t value, const q_t lower, const q_t upper) {
-	return qeqmore(value, lower) && qeqless(value, upper);
-}*/
+q_t qwithin(q_t v, q_t b1, q_t b2) {
+	const q_t hi = qmax(b1, b2);
+	const q_t lo = qmin(b1, b2);
+	if (qequal(v, b1) || qequal(v, b2))
+		return 1;
+	return qless(v, hi) && qmore(v, lo) ? QINT(1) : QINT(0);
+}
+
+q_t qwithin_interval(q_t v, q_t expected, q_t allowance) {
+	const q_t b1 = qadd(expected, allowance);
+	const q_t b2 = qsub(expected, allowance);
+	return qwithin(v, b1, b2);
+}
 
 /** @todo create a conversion routine that takes three numbers:
      integer, fractional, divisor
@@ -328,7 +345,7 @@ static int uprint(u_t p, char *s, const size_t length, const long base) {
 /* <https://codereview.stackexchange.com/questions/109212> */
 int qsprintb(q_t p, char *s, size_t length, const unsigned long base) {
 	assert(s);
-	const int negative = qisnegative(p);
+	const int negative = !!qisnegative(p);
 	if (negative)
 		p = qnegate(p);
 	const d_t hi = qhigh(p);
@@ -346,13 +363,12 @@ int qsprintb(q_t p, char *s, size_t length, const unsigned long base) {
 	}
 	if (negative)
 		s[0] = '-';
-	const int hisz = uprint(hi, s + negative, length - 1, base);
+	const int hisz = uprint(hi, s + negative, length - (1 + negative), base);
 	if (hisz < 0 || (hisz + i + negative + 1) > length)
 		return -1;
 	memcpy(s + hisz + negative, frac, i);
 	return i + hisz;
 }
-
 
 int qsprint(const q_t p, char *s, const size_t length) {
 	return qsprintb(p, s, length, qconf.base); 
@@ -973,19 +989,18 @@ q_t qpid_update(qpid_t *pid, const q_t error, const q_t position) {
 
 /********* Simpsons method for numerical Integration *************************/
 /* From "Math Toolkit for Real-Time Programming" by Jack Crenshaw */
-/* TODO: Test this */
 
 q_t qsimpson(q_t (*f)(q_t), const q_t x1, const q_t x2, const unsigned n) {
 	assert(f);
 	assert((n & 1) == 0);
-	const q_t h = qdiv(qsub(x2, x1), n);
+	const q_t h = qdiv(qsub(x2, x1), QINT(n));
 	q_t sum = 0, x = x1;
 	for(unsigned i = 0; i < (n / 2u); i++){
 		sum = qadd(sum, qadd(f(x), qmul(QINT(2), f(qadd(x,h)))));
 		x   = qadd(x, qmul(QINT(2), h));
 	}
 	sum = qsub(qmul(QINT(2), sum), qadd(f(x1), f(x2)));
-	return qdiv(qmul(h,sum), QINT(3));
+	return qdiv(qmul(h, sum), QINT(3));
 }
 
 /********* Simpsons method for numerical Integration *************************/
@@ -995,11 +1010,9 @@ we have (such as an identity matrix), or whether or not the matrix contents
 are valid.
 TODO: Allow a compile time option to store and operate on matrices in row or
 column order.
-TODO: It would be nice if we could work with matrices of complex numbers as
-well, but that will probably never be implemented.
-TODO: Add trace, transpose, reduce, factorization, function application, and other matrix operations */
+TODO: Add reduce, factorization, and other matrix operations */
 
-enum { LENGTH, ROW, COLUMN, DATA };
+enum { METADATA, LENGTH, ROW, COLUMN, DATA };
 
 int qmatrix_is_valid(const q_t *m) {
 	const size_t size = m[LENGTH], row = m[ROW], column = m[COLUMN];
@@ -1023,7 +1036,7 @@ int qmatrix_resize(q_t *m, const size_t row, const size_t column) {
 	return 0;
 }
 
-int qmatrix_unary_apply(q_t *r, const q_t *a, q_t (*func)(q_t)) {
+int qmatrix_apply_unary(q_t *r, const q_t *a, q_t (*func)(q_t)) {
 	assert(r);
 	assert(qmatrix_is_valid(r));
 	assert(a);
@@ -1041,7 +1054,26 @@ int qmatrix_unary_apply(q_t *r, const q_t *a, q_t (*func)(q_t)) {
 	return 0;
 }
 
-int qmatrix_binary_apply(q_t *r, const q_t *a, const q_t *b, q_t (*func)(q_t, q_t)) {
+
+int qmatrix_apply_scalar(q_t *r, const q_t *a, q_t (*func)(q_t, q_t), const q_t c) {
+	assert(r);
+	assert(qmatrix_is_valid(r));
+	assert(a);
+	assert(qmatrix_is_valid(a));
+	assert(func);
+       	const q_t *ma = &a[DATA];
+	q_t *mr = &r[DATA];
+	const size_t arows = a[ROW], acolumns = a[COLUMN];
+	const size_t rrows = r[ROW], rcolumns = r[COLUMN];
+	if (arows != rrows || acolumns != rcolumns)
+		return -1;
+	for (size_t i = 0; i < arows; i++)
+		for (size_t j = 0; j < acolumns; j++)
+			mr[i*acolumns + j] = func(ma[i*acolumns + j], c);
+	return 0;
+}
+
+int qmatrix_apply_binary(q_t *r, const q_t *a, const q_t *b, q_t (*func)(q_t, q_t)) {
 	assert(a);
 	assert(qmatrix_is_valid(a));
 	assert(b);
@@ -1070,14 +1102,29 @@ static q_t qfz(q_t a) { UNUSED(a); return QINT(0); }
 static q_t qf1(q_t a) { UNUSED(a); return QINT(1); }
 static q_t qid(q_t a) { return a; }
 
-/* It will speeds things up if you can force the apply functions to
+/* It will speed things up if you can force the apply functions to
  * be inlined. A smart enough compiler should realize the function
- * point is also constant and inline that function as well */
-int qmatrix_zero(q_t *r) { return qmatrix_unary_apply(r, r, qfz); }
-int qmatrix_one(q_t *r) { return qmatrix_unary_apply(r, r, qf1); }
-int qmatrix_copy(q_t *r, const q_t *a) { return qmatrix_unary_apply(r, a, qid); }
-int qmatrix_add(q_t *r, const q_t *a, const q_t *b) { return qmatrix_binary_apply(r, a, b, qadd); }
-int qmatrix_sub(q_t *r, const q_t *a, const q_t *b) { return qmatrix_binary_apply(r, a, b, qsub); }
+ * pointer is also constant and inline that function as well */
+int qmatrix_zero(q_t *r)    { return qmatrix_apply_unary(r, r, qfz); }
+int qmatrix_one(q_t *r)     { return qmatrix_apply_unary(r, r, qf1); }
+int qmatrix_logical(q_t *r, const q_t *a) { return qmatrix_apply_unary(r, a, qlogical); }
+int qmatrix_not(q_t *r, const q_t *a)     { return qmatrix_apply_unary(r, a, qnot); }
+int qmatrix_signum(q_t *r, const q_t *a)  { return qmatrix_apply_unary(r, a, qsignum); }
+int qmatrix_invert(q_t *r, const q_t *a)  { return qmatrix_apply_unary(r, a, qinvert); }
+int qmatrix_copy(q_t *r, const q_t *a)  { return qmatrix_apply_unary(r, a, qid); }
+int qmatrix_add(q_t *r, const q_t *a, const q_t *b) { return qmatrix_apply_binary(r, a, b, qadd); }
+int qmatrix_sub(q_t *r, const q_t *a, const q_t *b) { return qmatrix_apply_binary(r, a, b, qsub); }
+int qmatrix_and(q_t *r, const q_t *a, const q_t *b) { return qmatrix_apply_binary(r, a, b, qand); }
+int qmatrix_or (q_t *r, const q_t *a, const q_t *b) { return qmatrix_apply_binary(r, a, b, qor); }
+int qmatrix_xor(q_t *r, const q_t *a, const q_t *b) { return qmatrix_apply_binary(r, a, b, qxor); }
+
+int qmatrix_scalar_add(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qadd, scalar); }
+int qmatrix_scalar_sub(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qsub, scalar); }
+int qmatrix_scalar_mul(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qmul, scalar); }
+int qmatrix_scalar_div(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qdiv, scalar); }
+int qmatrix_scalar_and(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qand, scalar); }
+int qmatrix_scalar_or (q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qor,  scalar); }
+int qmatrix_scalar_xor(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qxor, scalar); }
 
 int qmatrix_is_square(const q_t *m) {
 	assert(m);
@@ -1109,6 +1156,22 @@ q_t qmatrix_trace(const q_t *m) {
 			if (i == j)
 				tr = qadd(tr, mm[i*length + j]);
 	return tr;
+}
+
+q_t qmatrix_equal(const q_t *a, const q_t *b) {
+	assert(a);
+	assert(qmatrix_is_valid(a));
+	assert(b);
+	assert(qmatrix_is_valid(b));
+	const size_t arow = a[ROW], acolumn = a[COLUMN];
+	const size_t brow = b[ROW], bcolumn = b[COLUMN];
+	const q_t *ma = &a[DATA];
+	const q_t *mb = &a[DATA];
+	if (a == b)
+		return QINT(1);
+	if (arow != brow && acolumn != bcolumn)
+		return QINT(0);
+	return !memcmp(ma, mb, sizeof(q_t) * arow * brow);
 }
 
 static q_t determine(const q_t *m, const size_t length) {
@@ -1249,7 +1312,7 @@ size_t qmatrix_string_length(const q_t *m) {
 	assert(m);
 	if (!qmatrix_is_valid(m))
 		return 128; /* space for invalid matrix message */
-	const size_t msize = m[0];
+	const size_t msize = m[LENGTH];
 	const size_t r = (msize * 
 			(32 /*max length if base 2 used)*/ 
 			+ 2 /* '-' and '.' */
@@ -1257,8 +1320,6 @@ size_t qmatrix_string_length(const q_t *m) {
 			)) + 16 /* space for extra formatting */;
 	return r;
 }
-
-
 
 /********* Matrix Operations *************************************************/
 /********* Sine/Cosine By Another Method *************************************/
@@ -1338,95 +1399,77 @@ static q_t numberify(const char *s) {
 	return q;
 }
 
-static q_t op_negate (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qnegate(a); }
-static q_t op_invert (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qinvert(a); }
-static q_t op_not    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return !a; }
-static q_t op_mul    (qexpr_t *e, q_t a, q_t b) { assert(e); return qmul(a, b); }
-static q_t op_add    (qexpr_t *e, q_t a, q_t b) { assert(e); return qadd(a, b); }
-static q_t op_sub    (qexpr_t *e, q_t a, q_t b) { assert(e); return qsub(a, b); }
-static q_t op_and    (qexpr_t *e, q_t a, q_t b) { assert(e); return qand(a, b); }
-static q_t op_or     (qexpr_t *e, q_t a, q_t b) { assert(e); return qor(a, b); }
-static q_t op_xor    (qexpr_t *e, q_t a, q_t b) { assert(e); return qxor(a, b); }
-static q_t op_lshift (qexpr_t *e, q_t a, q_t b) { assert(e); return qlls(a, b); }
-static q_t op_rshift (qexpr_t *e, q_t a, q_t b) { assert(e); return qlrs(a, b); }
-static q_t op_less   (qexpr_t *e, q_t a, q_t b) { assert(e); return QINT(qless(a, b)); }
-static q_t op_more   (qexpr_t *e, q_t a, q_t b) { assert(e); return QINT(qmore(a, b)); }
-static q_t op_eqless (qexpr_t *e, q_t a, q_t b) { assert(e); return QINT(qeqless(a, b)); }
-static q_t op_eqmore (qexpr_t *e, q_t a, q_t b) { assert(e); return QINT(qeqmore(a, b)); }
-static q_t op_equal  (qexpr_t *e, q_t a, q_t b) { assert(e); return QINT(qequal(a, b)); }
-static q_t op_unequal(qexpr_t *e, q_t a, q_t b) { assert(e); return QINT(qunequal(a, b)); }
-
-static q_t op_sin    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qsin(a); }
-static q_t op_cos    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qcos(a); }
-static q_t op_tan    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qtan(a); }
-static q_t op_asin   (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qasin(a); }
-static q_t op_acos   (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qacos(a); }
-static q_t op_atan   (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qatan(a); }
-
-static q_t op_exp    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qexp(a); }
-static q_t op_log    (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qlog(a); }
-static q_t op_pow    (qexpr_t *e, q_t a, q_t b) { assert(e); return qpow(a, b); }
-
-static q_t op_floor  (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qfloor(a); }
-static q_t op_ceil   (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qceil(a); }
-static q_t op_trunc  (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qtrunc(a); }
-static q_t op_round  (qexpr_t *e, q_t a, q_t b) { assert(e); UNUSED(b); return qround(a); }
-
-static q_t op_div(qexpr_t *e, q_t a, q_t b) {
+static q_t check_div0(qexpr_t *e, q_t a, q_t b) {
 	assert(e);
+	UNUSED(a);
 	if (!b) {
 		error(e, "division by zero");
-		return 0; /* error handled later */
+		return -QINT(1);
 	}
-	return qdiv(a , b);
+	return QINT(0);
 }
 
-static q_t op_mod(qexpr_t *e, q_t a, q_t b) {
+static q_t check_nlz(qexpr_t *e, q_t a) { // Not Less Zero
 	assert(e);
-	if (!b) {
-		error(e, "division by zero");
-		return 0; /* error handled later */
+	if (qless(a, QINT(0))) { 
+		error(e, "negative argument");
+		return -QINT(1);
 	}
-	return qrem(a, b);
+	return QINT(0);
+}
+
+static q_t check_nlez(qexpr_t *e, q_t a) { // Not Less Equal Zero
+	if (qeqless(a, QINT(0))) { 
+		error(e, "negative argument");
+		return -QINT(1);
+	}
+	return QINT(0);
 }
 
 static const qoperations_t *op_get(const char *op) {
 	assert(op);
-	static const qoperations_t ops[] = { // Binary Search Table
-		{  "!",       op_not,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "!=",      op_unequal,  2,  0,  ASSOCIATE_LEFT,   },
-		{  "%",       op_mod,      3,  0,  ASSOCIATE_LEFT,   },
-		{  "&",       op_and,      2,  0,  ASSOCIATE_LEFT,   },
-		{  "(",       NULL,        0,  0,  ASSOCIATE_NONE,   },
-		{  ")",       NULL,        0,  0,  ASSOCIATE_NONE,   },
-		{  "*",       op_mul,      3,  0,  ASSOCIATE_LEFT,   },
-		{  "+",       op_add,      2,  0,  ASSOCIATE_LEFT,   },
-		{  "-",       op_sub,      2,  0,  ASSOCIATE_LEFT,   },
-		{  "/",       op_div,      3,  0,  ASSOCIATE_LEFT,   },
-		{  "<",       op_less,     2,  0,  ASSOCIATE_LEFT,   },
-		{  "<<",      op_lshift,   4,  0,  ASSOCIATE_RIGHT,  },
-		{  "<=",      op_eqless,   2,  0,  ASSOCIATE_LEFT,   },
-		{  "==",      op_equal,    2,  0,  ASSOCIATE_LEFT,   },
-		{  ">",       op_more,     2,  0,  ASSOCIATE_LEFT,   },
-		{  ">=",      op_eqmore,   2,  0,  ASSOCIATE_LEFT,   },
-		{  ">>",      op_rshift,   4,  0,  ASSOCIATE_RIGHT,  },
-		{  "^",       op_xor,      2,  0,  ASSOCIATE_LEFT,   },
-		{  "asin",    op_asin,     5,  1,  ASSOCIATE_RIGHT,  },
-		{  "acos",    op_acos,     5,  1,  ASSOCIATE_RIGHT,  },
-		{  "atan",    op_atan,     5,  1,  ASSOCIATE_RIGHT,  },
-		{  "cos",     op_cos,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "ceil",    op_ceil,     5,  1,  ASSOCIATE_RIGHT,  },
-		{  "exp",     op_exp,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "floor",   op_floor,    5,  1,  ASSOCIATE_RIGHT,  },
-		{  "log",     op_log,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "negate",  op_negate,   5,  1,  ASSOCIATE_RIGHT,  },
-		{  "pow",     op_pow,      5,  0,  ASSOCIATE_RIGHT,  },
-		{  "round",   op_round,    5,  1,  ASSOCIATE_RIGHT,  },
-		{  "sin",     op_sin,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "tan",     op_tan,      5,  1,  ASSOCIATE_RIGHT,  },
-		{  "trunc",   op_trunc,    5,  1,  ASSOCIATE_RIGHT,  },
-		{  "|",       op_or,       2,  0,  ASSOCIATE_LEFT,   },
-		{  "~",       op_invert,   5,  1,  ASSOCIATE_RIGHT,  },
+	/* This list could possibly be exported and used in the
+	test program. A list of function pointers containing all
+	operators (even if they are not used in the expression 
+	evaluator) would be useful. */
+	static const qoperations_t ops[] = {
+		/* Binary Search Table: Use 'LC_ALL="C" sort -k 2 < table' to sort this */
+		{  "!",       .eval.unary  = qnot,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "!=",      .eval.binary = qunequal, .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  "%",       .eval.binary = qrem,/*!*/.check.binary = check_div0,  3,  0,  ASSOCIATE_LEFT,   },
+		{  "&",       .eval.binary = qand,     .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  "(",       .eval.unary  = NULL,     .check.unary  = NULL,        0,  0,  ASSOCIATE_NONE,   },
+		{  ")",       .eval.unary  = NULL,     .check.unary  = NULL,        0,  0,  ASSOCIATE_NONE,   },
+		{  "*",       .eval.binary = qmul,     .check.binary = NULL,        3,  0,  ASSOCIATE_LEFT,   },
+		{  "+",       .eval.binary = qadd,     .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  "-",       .eval.binary = qsub,     .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  "/",       .eval.binary = qdiv,     .check.binary = check_div0,  3,  0,  ASSOCIATE_LEFT,   },
+		{  "<",       .eval.binary = qless,    .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  "<<",      .eval.binary = qlls,     .check.binary = NULL,        4,  0,  ASSOCIATE_RIGHT,  },
+		{  "<=",      .eval.binary = qeqless,  .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  "==",      .eval.binary = qequal,   .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  ">",       .eval.binary = qmore,    .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  ">=",      .eval.binary = qeqmore,  .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  ">>",      .eval.binary = qlrs,     .check.binary = NULL,        4,  0,  ASSOCIATE_RIGHT,  },
+		{  "^",       .eval.binary = qxor,     .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  "abs",     .eval.unary  = qabs,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "acos",    .eval.unary  = qacos,    .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "asin",    .eval.unary  = qasin,    .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "atan",    .eval.unary  = qatan,    .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "ceil",    .eval.unary  = qceil,    .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "cos",     .eval.unary  = qcos,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "exp",     .eval.unary  = qexp,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "floor",   .eval.unary  = qfloor,   .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "log",     .eval.unary  = qlog,     .check.unary  = check_nlez,  5,  1,  ASSOCIATE_RIGHT,  },
+		{  "negate",  .eval.unary  = qnegate,  .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "pow",     .eval.binary = qpow,     .check.binary = NULL,        5,  0,  ASSOCIATE_RIGHT,  },
+		{  "round",   .eval.unary  = qround,   .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "sin",     .eval.unary  = qsin,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "sqrt",    .eval.unary  = qsqrt,    .check.unary  = check_nlz,   5,  1,  ASSOCIATE_RIGHT,  },
+		{  "tan",     .eval.unary  = qtan,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "trunc",   .eval.unary  = qtrunc,   .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "|",       .eval.binary = qor,      .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
+		{  "~",       .eval.unary  = qinvert,  .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
 	};
 	const size_t length = (sizeof ops / sizeof ops[0]);
 	size_t l = 0, r = length - 1;
@@ -1511,14 +1554,25 @@ static int op_eval(qexpr_t *e) {
 	if (!pop)
 		return -1;
 	const q_t a = number_pop(e);
-	if (!(pop->eval)) {
+	const int exists = pop->unary ? !!(pop->eval.unary) : !!(pop->eval.binary);
+	if (!exists) {
 		error(e, "syntax error");
 		return -1;
 	}
-	if (pop->unary)
-		return number_push(e, pop->eval(e, a, 0));
+	if (pop->unary) {
+		if (pop->check.unary && pop->check.unary(e, a) < 0) {
+			error(e, "unary check failed");
+			return -1;
+		}
+		return number_push(e, pop->eval.unary(a));
+	}
 	const q_t b = number_pop(e);
-	return number_push(e, pop->eval(e, b, a));
+	if (pop->check.binary && pop->check.binary(e, b, a)) {
+		error(e, "binary check failed");
+		return -1;
+	}
+
+	return number_push(e, pop->eval.binary(b, a));
 }
 
 static int shunt(qexpr_t *e, const qoperations_t *op) {

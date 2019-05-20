@@ -84,7 +84,14 @@ typedef struct qoperations qoperations_t;
 
 struct qoperations {
 	char *name;
-	q_t (*eval) (qexpr_t *e, q_t a1, q_t a2);
+	union {
+		q_t (*unary)  (q_t a);
+		q_t (*binary) (q_t a1, q_t a2);
+	} eval;
+	union {
+		q_t (*unary)  (qexpr_t *e, q_t a);
+		q_t (*binary) (qexpr_t *e, q_t a1, q_t a2);
+	} check;
 	int precedence, unary, assocativity;
 };
 
@@ -123,22 +130,7 @@ typedef struct {
 extern const qinfo_t qinfo; /**< information about the format and constants */
 extern qconf_t qconf;       /**< @warning GLOBAL Q configuration options */
 
-/**@todo These should be inline-able...
- * @todo These test functions should return Q numbers... */
-int qisnegative(q_t a);
-int qispositive(q_t a);
-int qisinteger(q_t a);
-int qisodd(q_t a);
-int qiseven(q_t a);
-
-int qless(q_t a, q_t b);
-int qmore(q_t a, q_t b);
-int qeqless(q_t a, q_t b);
-int qeqmore(q_t a, q_t b);
-int qequal(q_t a, q_t b);
-int qunequal(q_t a, q_t b);
-int qapproxequal(q_t a, q_t b, q_t epsilon);
-int qapproxunequal(q_t a, q_t b, q_t epsilon);
+/**@todo These should be inline-able...*/
 
 int qtoi(q_t toi);
 q_t qint(int toq);
@@ -150,6 +142,23 @@ long qtol(const q_t q);
 q_t qlong(long l);
 long long qtoll(const q_t q);
 q_t qvlong(long long ll);
+
+q_t qisnegative(q_t a);
+q_t qispositive(q_t a);
+q_t qisinteger(q_t a);
+q_t qisodd(q_t a);
+q_t qiseven(q_t a);
+
+q_t qless(q_t a, q_t b);
+q_t qmore(q_t a, q_t b);
+q_t qeqless(q_t a, q_t b);
+q_t qeqmore(q_t a, q_t b);
+q_t qequal(q_t a, q_t b);
+q_t qunequal(q_t a, q_t b);
+q_t qapproxequal(q_t a, q_t b, q_t epsilon);
+q_t qapproxunequal(q_t a, q_t b, q_t epsilon);
+q_t qwithin(q_t v, q_t b1, q_t b2);
+q_t qwithin_interval(q_t v, q_t expected, q_t allowance);
 
 q_t qnegate(q_t a);
 q_t qmin(q_t a, q_t b);
@@ -178,6 +187,9 @@ q_t qand(q_t a, q_t b);
 q_t qxor(q_t a, q_t b);
 q_t qor(q_t a, q_t b);
 q_t qinvert(q_t a);
+q_t qnot(q_t a);
+q_t qlogical(q_t a);
+
 q_t qlls(q_t a, q_t b);
 q_t qlrs(q_t a, q_t b);
 q_t qals(q_t a, q_t b);
@@ -238,11 +250,11 @@ q_t qfilter_value(const qfilter_t *f);
 
 q_t qpid_update(qpid_t *pid, const q_t error, const q_t position);
 
-/* A matrix consists of at least three elements, the length of the
- * array (which must be big enough to store row*column, but may be
- * larger) and a row and a column count in unsigned integer format, 
- * and the array elements in Q format. This simplifies storage and 
- * declaration of matrices.
+/* A matrix consists of at least four elements, a meta data field, 
+ * the length of the array (which must be big enough to store 
+ * row*column, but may be * larger) and a row and a column count 
+ * in unsigned integer format, and the array elements in Q format. 
+ * This simplifies storage and declaration of matrices.
  *
  * An example, the 2x3 matrix:
  *
@@ -250,31 +262,47 @@ q_t qpid_update(qpid_t *pid, const q_t error, const q_t position);
  *
  * Should be defined as:
  *
- * 	q_t m[] = { 2*3, 2, 3, QINT(1), QINT(2), QINT(3), QINT(4), QINT(5), QINT(6) };
+ * 	q_t m[] = { 0, 2*3, 2, 3, QINT(1), QINT(2), QINT(3), QINT(4), QINT(5), QINT(6) };
  *
  */
-
-int qmatrix_unary_apply(q_t *r, const q_t *a, q_t (*func)(q_t));
-int qmatrix_binary_apply(q_t * RESTRICT r, const q_t *a, const q_t *b, q_t (*func)(q_t, q_t));
+int qmatrix_apply_unary(q_t *r, const q_t *a, q_t (*func)(q_t));
+int qmatrix_apply_scalar(q_t *r, const q_t *a, q_t (*func)(q_t, q_t), const q_t c);
+int qmatrix_apply_binary(q_t * RESTRICT r, const q_t *a, const q_t *b, q_t (*func)(q_t, q_t));
 int qmatrix_sprintb(const q_t *m, char *str, size_t length, unsigned base);
 int qmatrix_resize(q_t *m, const size_t row, const size_t column);
 int qmatrix_copy(q_t *r, const q_t *a);
 size_t qmatrix_string_length(const q_t *m);
 
+q_t qmatrix_trace(const q_t *m);
+q_t qmatrix_determinant(const q_t *m);
+q_t qmatrix_equal(const q_t *a, const q_t *b);
+
 int qmatrix_zero(q_t *r);
 int qmatrix_one(q_t *r);
 int qmatrix_identity(q_t *r); /* turn into identity matrix, r must be square */
 
-q_t qmatrix_trace(const q_t *m);
-q_t qmatrix_determinant(const q_t *m);
+int qmatrix_logical(q_t *r, const q_t *a);
+int qmatrix_not(q_t *r, const q_t *a);
+int qmatrix_signum(q_t *r, const q_t *a);
+int qmatrix_invert(q_t *r, const q_t *a);
 
-int qmatrix_is_square(const q_t *m);
 int qmatrix_is_valid(const q_t *m);
 
+int qmatrix_transpose(q_t * RESTRICT r, const q_t * RESTRICT m);
 int qmatrix_add(q_t * RESTRICT r, const q_t *a, const q_t *b);
 int qmatrix_sub(q_t * RESTRICT r, const q_t *a, const q_t *b);
 int qmatrix_mul(q_t * RESTRICT r, const q_t *a, const q_t *b);
-int qmatrix_transpose(q_t * RESTRICT r, const q_t * RESTRICT m);
+int qmatrix_and(q_t *r, const q_t *a, const q_t *b);
+int qmatrix_or (q_t *r, const q_t *a, const q_t *b);
+int qmatrix_xor(q_t *r, const q_t *a, const q_t *b);
+
+int qmatrix_scalar_add(q_t *r, const q_t *a, const q_t scalar);
+int qmatrix_scalar_sub(q_t *r, const q_t *a, const q_t scalar);
+int qmatrix_scalar_mul(q_t *r, const q_t *a, const q_t scalar);
+int qmatrix_scalar_div(q_t *r, const q_t *a, const q_t scalar);
+int qmatrix_scalar_and(q_t *r, const q_t *a, const q_t scalar);
+int qmatrix_scalar_or (q_t *r, const q_t *a, const q_t scalar);
+int qmatrix_scalar_xor(q_t *r, const q_t *a, const q_t scalar);
 
 int qexpr(qexpr_t *e, const char *expr);
 int qexpr_init(qexpr_t *e);

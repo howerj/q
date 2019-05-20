@@ -21,15 +21,11 @@
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 
 typedef q_t (*function_unary_arith_t)(q_t a);
-typedef int (*function_unary_propery_t)(q_t a);
 typedef q_t (*function_binary_arith_t)(q_t a, q_t b);
-typedef int (*function_binary_compare_t)(q_t a, q_t b);
 
 typedef enum {
 	FUNCTION_UNARY_ARITHMETIC_E,
-	FUNCTION_UNARY_PROPERY_E,
 	FUNCTION_BINARY_ARITHMETIC_E,
-	FUNCTION_BINARY_COMPARISON_E,
 } function_e;
 
 typedef struct {
@@ -37,9 +33,7 @@ typedef struct {
 	int arity;
 	union {
 		function_binary_arith_t f;
-		function_binary_compare_t c;
 		function_unary_arith_t m;
-		function_unary_propery_t p;
 	} op;
 	char *name;
 } function_t;
@@ -47,6 +41,7 @@ typedef struct {
 static const function_t *lookup(char *op) {
 	assert(op);
 	static const function_t functions[] = {
+		/* TODO: Remove this and use the built in expression table */
 		{ .op.f = qadd,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "+" },
 		{ .op.f = qsub,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "-" },
 		{ .op.f = qmul,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "*" },
@@ -97,18 +92,18 @@ static const function_t *lookup(char *op) {
 		{ .op.m = qdeg2rad,     .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "deg2rad" },
 		{ .op.m = qrad2deg,     .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "rad2deg" },
 
-		{ .op.p = qisinteger,   .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,     .name = "int?" },
-		{ .op.p = qisnegative,  .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,     .name = "neg?" },
-		{ .op.p = qispositive,  .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,     .name = "pos?" },
-		{ .op.p = qisodd,       .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,     .name = "odd?" },
-		{ .op.p = qiseven,      .arity = 1, .type = FUNCTION_UNARY_PROPERY_E,     .name = "even?" },
+		{ .op.m = qisinteger,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "int?" },
+		{ .op.m = qisnegative,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "neg?" },
+		{ .op.m = qispositive,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "pos?" },
+		{ .op.m = qisodd,       .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "odd?" },
+		{ .op.m = qiseven,      .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,   .name = "even?" },
 
-		{ .op.c = qmore,        .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = ">" },
-		{ .op.c = qless,        .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "<" },
-		{ .op.c = qequal,       .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "=" },
-		{ .op.c = qeqmore,      .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = ">=" },
-		{ .op.c = qeqless,      .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "<=" },
-		{ .op.c = qunequal,     .arity = 2, .type = FUNCTION_BINARY_COMPARISON_E, .name = "<>" },
+		{ .op.f = qmore,        .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = ">" },
+		{ .op.f = qless,        .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "<" },
+		{ .op.f = qequal,       .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "=" },
+		{ .op.f = qeqmore,      .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = ">=" },
+		{ .op.f = qeqless,      .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "<=" },
+		{ .op.f = qunequal,     .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "<>" },
 
 	};
 	const size_t length = sizeof(functions) / sizeof(functions[0]);
@@ -230,46 +225,12 @@ static const char *eval_error(int e) {
 	return msgs[e] ? msgs[e] : "unknown";
 }
 
-static int qwithin(q_t v, q_t b1, q_t b2) {
-	const q_t hi = qmax(b1, b2);
-	const q_t lo = qmin(b1, b2);
-	if (qequal(v, b1) || qequal(v, b2))
-		return 1;
-	return qless(v, hi) && qmore(v, lo) ? 1 : 0;
-}
-
-static int qwithin_bounds(q_t v, q_t expected, q_t allowance) {
-	const q_t b1 = qadd(expected, allowance);
-	const q_t b2 = qsub(expected, allowance);
-	return qwithin(v, b1, b2);
-}
-
-static int eval_unary_property(function_unary_propery_t p, q_t expected, q_t bound, q_t arg1, q_t *result) {
-	assert(p);
-	assert(result);
-	const int r = p(arg1);
-	*result = qint(r);
-	if (qwithin_bounds(qint(r), expected, bound))
-		return 0;
-	return -1;
-}
-
 static int eval_unary_arith(function_unary_arith_t m, q_t expected, q_t bound, q_t arg1, q_t *result) {
 	assert(m);
 	assert(result);
 	const q_t r = m(arg1);
 	*result = r;
-	if (qwithin_bounds(r, expected, bound))
-		return 0;
-	return -1;
-}
-
-static int eval_binary_comp(function_binary_compare_t c, q_t expected, q_t arg1, q_t arg2, q_t *result) {
-	assert(c);
-	assert(result);
-	const int r = c(arg1, arg2);
-	*result = qint(r);
-	if (r == qtoi(expected))
+	if (qwithin_interval(r, expected, bound))
 		return 0;
 	return -1;
 }
@@ -279,7 +240,7 @@ static int eval_binary_arith(function_binary_arith_t f, q_t expected, q_t bound,
 	assert(result);
 	const q_t r = f(arg1, arg2);
 	*result = r;
-	if (qwithin_bounds(r, expected, bound))
+	if (qwithin_interval(r, expected, bound))
 		return 0;
 	return -1;
 }
@@ -337,10 +298,6 @@ static int eval(char *line, q_t *result) {
 	if (qconv(&a1, arg1) < 0)
 		return -EVAL_ERROR_CONVERT_E;
 	switch (func->type) {
-	case FUNCTION_UNARY_PROPERY_E:
-		if (eval_unary_property(func->op.p, e, b, a1, result) < 0)
-			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
-		break;
 	case FUNCTION_UNARY_ARITHMETIC_E:
 		if (eval_unary_arith(func->op.m, e, b, a1, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
@@ -349,12 +306,6 @@ static int eval(char *line, q_t *result) {
 		if (qconv(&a2, arg2) < 0)
 			return -EVAL_ERROR_CONVERT_E;
 		if (eval_binary_arith(func->op.f, e, b, a1, a2, result) < 0)
-			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
-		break;
-	case FUNCTION_BINARY_COMPARISON_E:
-		if (qconv(&a2, arg2) < 0)
-			return -EVAL_ERROR_CONVERT_E;
-		if (eval_binary_comp(func->op.f, e, a1, a2, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
 		break;
 	default:
@@ -502,14 +453,14 @@ static int test_fma(void) {
 	unit_test_statement(&t, b = one_and_a_half);
 	unit_test_statement(&t, c = qinfo.min);
 	unit_test_statement(&t, r = qadd(qmul(a, b), c));
-	unit_test(&t, qwithin_bounds(r, qint(0), qint(1)));
+	unit_test(&t, qwithin_interval(r, qint(0), qint(1)));
 
 	/* correct result using Fused Multiply Add */
 	unit_test_statement(&t, a = qinfo.max);
 	unit_test_statement(&t, b = one_and_a_half);
 	unit_test_statement(&t, c = qinfo.min);
 	unit_test_statement(&t, r = qfma(a, b, c));
-	unit_test(&t, qwithin_bounds(r, qdiv(qinfo.max, qint(2)), qint(1)));
+	unit_test(&t, qwithin_interval(r, qdiv(qinfo.max, qint(2)), qint(1)));
 
 	return unit_test_finish(&t);
 }
@@ -547,9 +498,9 @@ static int qmatrix_print(FILE *out, const q_t *m) {
 	return r;
 }
 
-#define QMATRIX(ROW, COLUMN, ...) { ROW * COLUMN, ROW, COLUMN, __VA_ARGS__  }
+#define QMATRIX(ROW, COLUMN, ...) { 0, ROW * COLUMN, ROW, COLUMN, __VA_ARGS__  }
 #define QMATRIXZ(ROW, COLUMN)     QMATRIX((ROW), (COLUMN), 0)
-#define QMATRIXSZ(ROW, COLUMN)    ((((ROW)*(COLUMN)) + 3)*sizeof(q_t))
+#define QMATRIXSZ(ROW, COLUMN)    ((((ROW)*(COLUMN)) + 4)*sizeof(q_t))
 
 static int test_matrix(void) {
 	unit_test_t t = unit_test_start();
@@ -575,8 +526,8 @@ static int test_matrix(void) {
 	q_t abp[QMATRIXSZ(2, 2)]  = QMATRIXZ(2, 2);
 	unit_test_verify(&t, 0 == qmatrix_mul(ab, a, b));
 	unit_test_verify(&t, 0 == qmatrix_transpose(abp, ab));
-	unit_test(&t, memcmp(ab, abr, sizeof ab));
-	unit_test(&t, memcmp(ab, abp, sizeof abrp));
+	unit_test(&t, qmatrix_equal(ab, abr));
+	unit_test(&t, qmatrix_equal(ab, abrp));
 	qmatrix_print(out, a);
 	qmatrix_print(out, b);
 	qmatrix_print(out, ab);
@@ -612,7 +563,17 @@ static int test_matrix_trace(void) {
 	return unit_test_finish(&t);
 }
 
-static int internal_tests(void) { /**@todo add more tests */
+static q_t qid(q_t x) { return x; }
+static q_t qsq(q_t x) { return qmul(x, x); }
+
+static int test_simpson(void) {
+	unit_test_t t = unit_test_start();
+	unit_test(&t, qwithin_interval(qsimpson(qid, QINT(0), QINT(10), 100), QINT(50), QINT(1))); // (x^2)/2 + C
+	unit_test(&t, qwithin_interval(qsimpson(qsq, qnegate(QINT(2)), QINT(5), 100), QINT(44), QINT(1))); // (x^3)/3 + C
+	return unit_test_finish(&t);
+}
+
+static int internal_tests(void) {
 	typedef int (*unit_test_t)(void);
 	unit_test_t tests[] = {
 		test_sanity,
@@ -621,6 +582,7 @@ static int internal_tests(void) { /**@todo add more tests */
 		// test_filter,
 		test_matrix,
 		test_matrix_trace,
+		test_simpson,
 		NULL
 	};
 	for (size_t i = 0; tests[i]; i++)
