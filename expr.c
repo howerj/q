@@ -49,7 +49,6 @@ fail:
 	return NULL;
 }
 
-
 static qvariable_t *variable_lookup(qexpr_t *e, const char *name) {
 	assert(e);
 	for (size_t i = 0; i < e->vars_max; i++) {

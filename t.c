@@ -20,100 +20,6 @@
 #define N    (16)
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 
-typedef q_t (*function_unary_arith_t)(q_t a);
-typedef q_t (*function_binary_arith_t)(q_t a, q_t b);
-
-typedef enum {
-	FUNCTION_UNARY_ARITHMETIC_E,
-	FUNCTION_BINARY_ARITHMETIC_E,
-} function_e;
-
-typedef struct {
-	function_e type;
-	int arity;
-	union {
-		function_binary_arith_t f;
-		function_unary_arith_t m;
-	} op;
-	char *name;
-} function_t;
-
-static const function_t *lookup(char *op) {
-	assert(op);
-	static const function_t functions[] = {
-		/* TODO: Remove this and use the built in expression table */
-		{ .op.f = qadd,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "+" },
-		{ .op.f = qsub,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "-" },
-		{ .op.f = qmul,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "*" },
-		{ .op.f = qcordic_mul,  .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "c*" },
-		{ .op.f = qcordic_div,  .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "c/" },
-		{ .op.f = qdiv,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "/" },
-		{ .op.f = qrem,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "rem" },
-		{ .op.f = qmin,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "min" },
-		{ .op.f = qmax,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "max" },
-		{ .op.f = qcopysign,    .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "copysign" },
-		{ .op.f = qand,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "and" },
-		{ .op.f = qor,          .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "or" },
-		{ .op.f = qxor,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "xor" },
-		{ .op.f = qars,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "arshift" },
-		{ .op.f = qlrs,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "rshift" },
-		{ .op.f = qals,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "alshift" },
-		{ .op.f = qlls,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "lshift" },
-		{ .op.f = qhypot,       .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "hypot" },
-		{ .op.f = qatan2,       .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "atan2" },
-		{ .op.f = qpow,         .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "pow" },
-
-		{ .op.m = qnegate,      .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
-		{ .op.m = qfloor,       .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "floor" },
-		{ .op.m = qceil,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "ceil" },
-		{ .op.m = qexp,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "exp" },
-		{ .op.m = qsqrt,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sqrt" },
-		{ .op.m = qsign,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sign" },
-		{ .op.m = qsignum,      .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "signum" },
-		{ .op.m = qcordic_exp,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_exp" },
-
-		{ .op.m = qnegate,      .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "negate" },
-		{ .op.m = qtrunc,       .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "trunc" },
-		{ .op.m = qround,       .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "round" },
-		{ .op.m = qabs,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "abs" },
-		{ .op.m = qsin,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sin" },
-		{ .op.m = qcos,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cos" },
-		{ .op.m = qtan,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "tan" },
-		{ .op.m = qatan,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "atan" },
-		{ .op.m = qasin,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "asin" },
-		{ .op.m = qacos,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "acos" },
-		{ .op.m = qtanh,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "tanh" },
-		{ .op.m = qsinh,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "sinh" },
-		{ .op.m = qcosh,        .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cosh" },
-		{ .op.m = qcot,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "cot" },
-		{ .op.m = qcordic_sqrt, .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_sqrt" },
-		{ .op.m = qcordic_ln,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "_ln" },
-		{ .op.m = qlog,         .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "log" },
-		{ .op.m = qdeg2rad,     .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "deg2rad" },
-		{ .op.m = qrad2deg,     .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "rad2deg" },
-
-		{ .op.m = qisinteger,   .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "int?" },
-		{ .op.m = qisnegative,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "neg?" },
-		{ .op.m = qispositive,  .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "pos?" },
-		{ .op.m = qisodd,       .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,  .name = "odd?" },
-		{ .op.m = qiseven,      .arity = 1, .type = FUNCTION_UNARY_ARITHMETIC_E,   .name = "even?" },
-
-		{ .op.f = qmore,        .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = ">" },
-		{ .op.f = qless,        .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "<" },
-		{ .op.f = qequal,       .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "=" },
-		{ .op.f = qeqmore,      .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = ">=" },
-		{ .op.f = qeqless,      .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "<=" },
-		{ .op.f = qunequal,     .arity = 2, .type = FUNCTION_BINARY_ARITHMETIC_E, .name = "<>" },
-
-	};
-	const size_t length = sizeof(functions) / sizeof(functions[0]);
-	for (size_t i = 0; i < length; i++) {
-		if (!strcmp(functions[i].name, op))
-			return &functions[i];
-	}
-	return NULL;
-}
-
 static int qprint(FILE *out, const q_t p) {
 	assert(out);
 	char buf[64+1] = { 0 };
@@ -122,6 +28,8 @@ static int qprint(FILE *out, const q_t p) {
 }
 
 static void printq(FILE *out, q_t q, const char *msg) {
+	assert(out);
+	assert(msg);
 	fprintf(out, "%s = ", msg);
 	qprint(out, q);
 	fputc('\n', out);
@@ -218,14 +126,14 @@ static const char *eval_error(int e) {
 		[EVAL_ERROR_TYPE_E]              = "unknown function type",
 		[EVAL_ERROR_CONVERT_E]           = "numeric conversion failed",
 		[EVAL_ERROR_OPERATION_E]         = "unknown operation",
-		[EVAL_ERROR_ARG_COUNT_E]         = "too few arguments",
+		[EVAL_ERROR_ARG_COUNT_E]         = "incorrect argument count",
 		[EVAL_ERROR_LIMIT_MODE_E]        = "unknown limit mode ('|' or '%' allowed)",
 		[EVAL_ERROR_UNEXPECTED_RESULT_E] = "unexpected result",
 	};
 	return msgs[e] ? msgs[e] : "unknown";
 }
 
-static int eval_unary_arith(function_unary_arith_t m, q_t expected, q_t bound, q_t arg1, q_t *result) {
+static int eval_unary_arith(q_t (*m)(q_t), q_t expected, q_t bound, q_t arg1, q_t *result) {
 	assert(m);
 	assert(result);
 	const q_t r = m(arg1);
@@ -235,7 +143,7 @@ static int eval_unary_arith(function_unary_arith_t m, q_t expected, q_t bound, q
 	return -1;
 }
 
-static int eval_binary_arith(function_binary_arith_t f, q_t expected, q_t bound, q_t arg1, q_t arg2, q_t *result) {
+static int eval_binary_arith(q_t (*f)(q_t, q_t), q_t expected, q_t bound, q_t arg1, q_t arg2, q_t *result) {
 	assert(f);
 	assert(result);
 	const q_t r = f(arg1, arg2);
@@ -284,7 +192,7 @@ static int eval(char *line, q_t *result) {
 	bounds_set(limit);
 	if (count < 5)
 		return -EVAL_ERROR_SCAN_E;
-	const function_t *func = lookup(operation);
+	const qoperations_t *func = qop(operation);
 	if (!func)
 		return -EVAL_ERROR_OPERATION_E;
 	q_t e = qinfo.zero, b = qinfo.zero, a1 = qinfo.zero, a2 = qinfo.zero;
@@ -297,15 +205,13 @@ static int eval(char *line, q_t *result) {
 		return -EVAL_ERROR_CONVERT_E;
 	if (qconv(&a1, arg1) < 0)
 		return -EVAL_ERROR_CONVERT_E;
-	switch (func->type) {
-	case FUNCTION_UNARY_ARITHMETIC_E:
-		if (eval_unary_arith(func->op.m, e, b, a1, result) < 0)
+	switch (func->arity) {
+	case 1: if (eval_unary_arith(func->eval.unary, e, b, a1, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
 		break;
-	case FUNCTION_BINARY_ARITHMETIC_E:
-		if (qconv(&a2, arg2) < 0)
+	case 2: if (qconv(&a2, arg2) < 0)
 			return -EVAL_ERROR_CONVERT_E;
-		if (eval_binary_arith(func->op.f, e, b, a1, a2, result) < 0)
+		if (eval_binary_arith(func->eval.binary, e, b, a1, a2, result) < 0)
 			return -EVAL_ERROR_UNEXPECTED_RESULT_E;
 		break;
 	default:
@@ -315,6 +221,7 @@ static int eval(char *line, q_t *result) {
 }
 
 static void trim(char *s) {
+	assert(s);
 	const int size = strlen(s);
 	for (int i = size - 1; i >= 0; i--) {
 		if (!isspace(s[i]))
@@ -376,17 +283,23 @@ typedef struct {
 } unit_test_t;
 
 static inline unit_test_t _unit_test_start(const char *file, const char *func, unsigned line) {
+	assert(file);
+	assert(func);
 	unit_test_t t = { .run = 0, .passed = 0 };
 	fprintf(stdout, "Start tests: %s in %s:%u\n\n", func, file, line);
 	return t;
 }
 
 static inline void _unit_test_statement(const char *expr_str) {
+	assert(expr_str);
 	fprintf(stdout, "   STATE: %s\n", expr_str);
 }
 
 static inline void _unit_test(unit_test_t *t, int failed, const char *expr_str, const char *file, const char *func, unsigned line, int die) {
 	assert(t);
+	assert(expr_str);
+	assert(file);
+	assert(func);
 	if(failed) {
 		fprintf(stdout, "  FAILED: %s (%s:%s:%u)\n", expr_str, file, func, line);
 		if(die) {
@@ -416,15 +329,12 @@ static inline int unit_test_finish(unit_test_t *t) {
 #define unit_test(T, EXPR)        _unit_test((T), 0 == (EXPR), (# EXPR), __FILE__, __func__, __LINE__, 0)
 #define unit_test_verify(T, EXPR) _unit_test((T), 0 == (EXPR), (# EXPR), __FILE__, __func__, __LINE__, 1)
 
-/**@todo remove/integrate test suite with this program */
 static int test_sanity(void) {
 	unit_test_t t = unit_test_start();
-
 	q_t t1 = 0, t2 = 0;
 	unit_test_statement(&t, t1 = qint(1));
 	unit_test_statement(&t, t2 = qint(2));
 	unit_test(&t, qtoi(qadd(t1, t2)) == 3);
-
 	return unit_test_finish(&t);
 }
 
@@ -592,6 +502,8 @@ static int internal_tests(void) {
 }
 
 static void help(FILE *out, const char *arg0) {
+	assert(out);
+	assert(arg0);
 	const char *h = "\n\
 Program: Q-Number (Q16.16, signed) library testbench\n\
 Author:  Richard James Howe (2018)\n\

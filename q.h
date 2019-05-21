@@ -78,11 +78,9 @@ typedef struct {
 } qpid_t; /**< PID Controller <https://en.wikipedia.org/wiki/PID_controller> */
 
 struct qexpr;
-struct qoperations;
 typedef struct qexpr qexpr_t;
-typedef struct qoperations qoperations_t;
 
-struct qoperations {
+typedef struct {
 	char *name;
 	union {
 		q_t (*unary)  (q_t a);
@@ -92,8 +90,8 @@ struct qoperations {
 		q_t (*unary)  (qexpr_t *e, q_t a);
 		q_t (*binary) (qexpr_t *e, q_t a1, q_t a2);
 	} check;
-	int precedence, unary, assocativity;
-};
+	int precedence, arity, assocativity, hidden;
+} qoperations_t; /**< use in the expression evaluator */
 
 typedef struct {
 	char *name;
@@ -308,6 +306,7 @@ int qexpr(qexpr_t *e, const char *expr);
 int qexpr_init(qexpr_t *e);
 int qexpr_error(qexpr_t *e);
 q_t qexpr_result(qexpr_t *e);
+const qoperations_t *qop(const char *op);
 
 #ifdef __cplusplus
 }

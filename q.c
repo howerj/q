@@ -6,6 +6,8 @@
  * @site <https://github.com/howerj/q>
  *
  *  TODO:
+ *      - Sort out difference between 32-bit and 64-bit versions
+ *      of this library (specifically atan2).
  * 	- add modulo *and* remainder
  * 	  - <https://news.ycombinator.com/item?id=17817758>
  * 	  - <https://rob.conery.io/2018/08/21/mod-and-remainder-are-not-the-same/>
@@ -1005,9 +1007,8 @@ q_t qsimpson(q_t (*f)(q_t), const q_t x1, const q_t x2, const unsigned n) {
 
 /********* Simpsons method for numerical Integration *************************/
 /********* Matrix Operations *************************************************/
-/* TODO: Add a meta-data field, this could use to check/set what kind of matrix
-we have (such as an identity matrix), or whether or not the matrix contents
-are valid.
+/* TODO: Add stuff to meta-data field; whether matrix is all zeros, or an
+identity matrix, whether it contains valid data, etcetera.
 TODO: Allow a compile time option to store and operate on matrices in row or
 column order.
 TODO: Add reduce, factorization, and other matrix operations */
@@ -1053,7 +1054,6 @@ int qmatrix_apply_unary(q_t *r, const q_t *a, q_t (*func)(q_t)) {
 			mr[i*acolumns + j] = func(ma[i*acolumns + j]);
 	return 0;
 }
-
 
 int qmatrix_apply_scalar(q_t *r, const q_t *a, q_t (*func)(q_t, q_t), const q_t c) {
 	assert(r);
@@ -1361,19 +1361,15 @@ int16_t cosine(int16_t x) {
 /********* Sine/Cosine By Another Method *************************************/
 /********* Expression Evaluator **********************************************/
 
-#define DEFAULT_STACK_SIZE      (64)
-
 enum { ASSOCIATE_NONE, ASSOCIATE_LEFT, ASSOCIATE_RIGHT };
 enum { LEX_NUMBER, LEX_OPERATOR, LEX_END };
 
-static const qoperations_t *op_get(const char *op);
-
 int qexpr_init(qexpr_t *e) {
 	assert(e);
-	e->lpar   = op_get("(");
-	e->rpar   = op_get(")");
-	e->negate = op_get("negate");
-	e->minus  = op_get("-");
+	e->lpar   = qop("(");
+	e->rpar   = qop(")");
+	e->negate = qop("negate");
+	e->minus  = qop("-");
 	e->initialized = 1;
 	assert(e->lpar && e->rpar && e->negate && e->minus);
 	return 0;
@@ -1426,7 +1422,7 @@ static q_t check_nlez(qexpr_t *e, q_t a) { // Not Less Equal Zero
 	return QINT(0);
 }
 
-static const qoperations_t *op_get(const char *op) {
+const qoperations_t *qop(const char *op) {
 	assert(op);
 	/* This list could possibly be exported and used in the
 	test program. A list of function pointers containing all
@@ -1434,42 +1430,69 @@ static const qoperations_t *op_get(const char *op) {
 	evaluator) would be useful. */
 	static const qoperations_t ops[] = {
 		/* Binary Search Table: Use 'LC_ALL="C" sort -k 2 < table' to sort this */
-		{  "!",       .eval.unary  = qnot,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "!=",      .eval.binary = qunequal, .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  "%",       .eval.binary = qrem,/*!*/.check.binary = check_div0,  3,  0,  ASSOCIATE_LEFT,   },
-		{  "&",       .eval.binary = qand,     .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  "(",       .eval.unary  = NULL,     .check.unary  = NULL,        0,  0,  ASSOCIATE_NONE,   },
-		{  ")",       .eval.unary  = NULL,     .check.unary  = NULL,        0,  0,  ASSOCIATE_NONE,   },
-		{  "*",       .eval.binary = qmul,     .check.binary = NULL,        3,  0,  ASSOCIATE_LEFT,   },
-		{  "+",       .eval.binary = qadd,     .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  "-",       .eval.binary = qsub,     .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  "/",       .eval.binary = qdiv,     .check.binary = check_div0,  3,  0,  ASSOCIATE_LEFT,   },
-		{  "<",       .eval.binary = qless,    .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  "<<",      .eval.binary = qlls,     .check.binary = NULL,        4,  0,  ASSOCIATE_RIGHT,  },
-		{  "<=",      .eval.binary = qeqless,  .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  "==",      .eval.binary = qequal,   .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  ">",       .eval.binary = qmore,    .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  ">=",      .eval.binary = qeqmore,  .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  ">>",      .eval.binary = qlrs,     .check.binary = NULL,        4,  0,  ASSOCIATE_RIGHT,  },
-		{  "^",       .eval.binary = qxor,     .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  "abs",     .eval.unary  = qabs,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "acos",    .eval.unary  = qacos,    .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "asin",    .eval.unary  = qasin,    .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "atan",    .eval.unary  = qatan,    .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "ceil",    .eval.unary  = qceil,    .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "cos",     .eval.unary  = qcos,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "exp",     .eval.unary  = qexp,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "floor",   .eval.unary  = qfloor,   .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "log",     .eval.unary  = qlog,     .check.unary  = check_nlez,  5,  1,  ASSOCIATE_RIGHT,  },
-		{  "negate",  .eval.unary  = qnegate,  .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "pow",     .eval.binary = qpow,     .check.binary = NULL,        5,  0,  ASSOCIATE_RIGHT,  },
-		{  "round",   .eval.unary  = qround,   .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "sin",     .eval.unary  = qsin,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "sqrt",    .eval.unary  = qsqrt,    .check.unary  = check_nlz,   5,  1,  ASSOCIATE_RIGHT,  },
-		{  "tan",     .eval.unary  = qtan,     .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "trunc",   .eval.unary  = qtrunc,   .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
-		{  "|",       .eval.binary = qor,      .check.binary = NULL,        2,  0,  ASSOCIATE_LEFT,   },
-		{  "~",       .eval.unary  = qinvert,  .check.unary  = NULL,        5,  1,  ASSOCIATE_RIGHT,  },
+		{  "!",         .eval.unary   =  qnot,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "!=",        .eval.binary  =  qunequal,     .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "%",         .eval.binary  =  qrem,/*!*/    .check.binary  =  check_div0,  3,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "&",         .eval.binary  =  qand,         .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "(",         .eval.unary   =  NULL,         .check.unary   =  NULL,        0,  0,  ASSOCIATE_NONE,   0,  },
+		{  ")",         .eval.unary   =  NULL,         .check.unary   =  NULL,        0,  0,  ASSOCIATE_NONE,   0,  },
+		{  "*",         .eval.binary  =  qmul,         .check.binary  =  NULL,        3,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "+",         .eval.binary  =  qadd,         .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "-",         .eval.binary  =  qsub,         .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "/",         .eval.binary  =  qdiv,         .check.binary  =  check_div0,  3,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "<",         .eval.binary  =  qless,        .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "<<",        .eval.binary  =  qlls,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  0,  },
+		{  "<=",        .eval.binary  =  qeqless,      .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "==",        .eval.binary  =  qequal,       .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  ">",         .eval.binary  =  qmore,        .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  ">=",        .eval.binary  =  qeqmore,      .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  ">>",        .eval.binary  =  qlrs,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  0,  },
+		{  "^",         .eval.binary  =  qxor,         .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "_exp",      .eval.unary   =  qcordic_exp,  .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  1,  },
+		{  "_ln",       .eval.unary   =  qcordic_ln,   .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  1,  },
+		{  "_sqrt",     .eval.unary   =  qcordic_sqrt, .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  1,  },
+		{  "abs",       .eval.unary   =  qabs,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "acos",      .eval.unary   =  qacos,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "arshift",   .eval.binary  =  qars,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "asin",      .eval.unary   =  qasin,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "atan",      .eval.unary   =  qatan,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "atan2",     .eval.binary  =  qatan2,       .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "c*",        .eval.binary  =  qcordic_mul,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "c/",        .eval.binary  =  qcordic_div,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "ceil",      .eval.unary   =  qceil,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "copysign",  .eval.binary  =  qcopysign,    .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "cos",       .eval.unary   =  qcos,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "cosh",      .eval.unary   =  qcosh,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "cot",       .eval.unary   =  qcot,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "deg2rad",   .eval.unary   =  qdeg2rad,     .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "even?",     .eval.unary   =  qiseven,      .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "exp",       .eval.unary   =  qexp,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "floor",     .eval.unary   =  qfloor,       .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "hypot",     .eval.binary  =  qhypot,       .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "int?",      .eval.unary   =  qisinteger,   .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "log",       .eval.unary   =  qlog,         .check.unary   =  check_nlez,  5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "lshift",    .eval.binary  =  qlls,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "max",       .eval.binary  =  qmax,         .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "min",       .eval.binary  =  qmin,         .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "neg?",      .eval.unary   =  qisnegative,  .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "negate",    .eval.unary   =  qnegate,      .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "odd?",      .eval.unary   =  qisodd,       .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "pos?",      .eval.unary   =  qispositive,  .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "pow",       .eval.binary  =  qpow,         .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  0,  },
+		{  "rad2deg",   .eval.unary   =  qrad2deg,     .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "rem",       .eval.binary  =  qrem,         .check.binary  =  check_div0,  3,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "round",     .eval.unary   =  qround,       .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "rshift",    .eval.binary  =  qlrs,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "sign",      .eval.unary   =  qsign,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "signum",    .eval.unary   =  qsignum,      .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "sin",       .eval.unary   =  qsin,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "sinh",      .eval.unary   =  qsinh,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "sqrt",      .eval.unary   =  qsqrt,        .check.unary   =  check_nlz,   5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "tan",       .eval.unary   =  qtan,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "tanh",      .eval.unary   =  qtanh,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "trunc",     .eval.unary   =  qtrunc,       .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "|",         .eval.binary  =  qor,          .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "~",         .eval.unary   =  qinvert,      .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 	};
 	const size_t length = (sizeof ops / sizeof ops[0]);
 	size_t l = 0, r = length - 1;
@@ -1554,12 +1577,12 @@ static int op_eval(qexpr_t *e) {
 	if (!pop)
 		return -1;
 	const q_t a = number_pop(e);
-	const int exists = pop->unary ? !!(pop->eval.unary) : !!(pop->eval.binary);
+	const int exists = pop->arity == 1 ? !!(pop->eval.unary) : !!(pop->eval.binary);
 	if (!exists) {
 		error(e, "syntax error");
 		return -1;
 	}
-	if (pop->unary) {
+	if (pop->arity == 1) {
 		if (pop->check.unary && pop->check.unary(e, a) < 0) {
 			error(e, "unary check failed");
 			return -1;
@@ -1646,7 +1669,7 @@ static int lex(qexpr_t *e, const char **expr) {
 		if ((v = variable_lookup(e, e->id))) {
 			e->number = v->value;
 			r = LEX_NUMBER;
-		} else if ((e->op = op_get(e->id))) {
+		} else if ((e->op = qop(e->id))) {
 			r = LEX_OPERATOR;
 		} else {
 			r = -1;
@@ -1656,11 +1679,11 @@ static int lex(qexpr_t *e, const char **expr) {
 			const qoperations_t *op1 = NULL, *op2 = NULL;
 			int set = 0;
 			e->id[e->id_count++] = *s++;
-			op1 = op_get(e->id);
+			op1 = qop(e->id);
 			if (*s && ispunct(*s)) {
 				set = 1;
 				e->id[e->id_count++] = *s++;
-				op2 = op_get(e->id);
+				op2 = qop(e->id);
 			}
 			r = (op1 || op2) ? LEX_OPERATOR : -1;
 			e->op = op2 ? op2 : op1;
@@ -1711,10 +1734,14 @@ int qexpr(qexpr_t *e, const char *expr) {
 			break;
 		case LEX_OPERATOR: {
 			const qoperations_t *op = e->op;
+			if (op->hidden) {
+				error(e, "unknown operator \"%s\"", op->name);
+				goto end;
+			}
 			if (firstop || (previous && previous != e->rpar)) {
 				if (e->op == e->minus) {
 					op = e->negate;
-				} else if (e->op->unary) {
+				} else if (e->op->arity == 1) {
 					// Do nothing
 				} else if (e->op != e->lpar) {
 					assert(e->op);
