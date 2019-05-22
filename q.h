@@ -61,7 +61,6 @@ typedef struct {
 	      ln10,        /**< the natural logarithm of 10 */
 	      min,         /**< most negative 'q' number */
 	      max;         /**< most positive 'q' number */
-	/**@todo document type of division, rounding behavior, etcetera */
 } qinfo_t;
 
 typedef struct {
@@ -128,8 +127,6 @@ typedef struct {
 extern const qinfo_t qinfo; /**< information about the format and constants */
 extern qconf_t qconf;       /**< @warning GLOBAL Q configuration options */
 
-/**@todo These should be inline-able...*/
-
 int qtoi(q_t toi);
 q_t qint(int toq);
 signed char qtoc(const q_t q);
@@ -171,6 +168,7 @@ q_t qsub(q_t a, q_t b);
 q_t qmul(q_t a, q_t b);
 q_t qdiv(q_t a, q_t b);
 q_t qrem(q_t a, q_t b);
+q_t qmod(q_t a, q_t b);
 q_t qfma(q_t a, q_t b, q_t c);
 q_t qexp(q_t e);
 q_t qlog(q_t n);
@@ -195,13 +193,12 @@ q_t qars(q_t a, q_t b);
 
 q_t qpow(q_t n, q_t exp);
 
-/**@todo refactor/simplify these functions, there does not need to be so many of them */
 int qsprint(q_t p, char *s, size_t length);
-int qsprintb(q_t p, char *s, size_t length, unsigned long base);
+int qsprintb(q_t p, char *s, size_t length, u_t base);
 int qnconv(q_t *q, const char *s, size_t length);
-int qnconvb(q_t *q, const char *s, size_t length, long base);
+int qnconvb(q_t *q, const char *s, size_t length, d_t base);
 int qconv(q_t *q, const char *s);
-int qconvb(q_t *q, const char * const s, long base);
+int qconvb(q_t *q, const char * const s, d_t base);
 
 void qsincos(q_t theta, q_t *sine, q_t *cosine);
 q_t qsin(q_t theta);
@@ -298,15 +295,24 @@ int qmatrix_scalar_add(q_t *r, const q_t *a, const q_t scalar);
 int qmatrix_scalar_sub(q_t *r, const q_t *a, const q_t scalar);
 int qmatrix_scalar_mul(q_t *r, const q_t *a, const q_t scalar);
 int qmatrix_scalar_div(q_t *r, const q_t *a, const q_t scalar);
+int qmatrix_scalar_mod(q_t *r, const q_t *a, const q_t scalar);
+int qmatrix_scalar_rem(q_t *r, const q_t *a, const q_t scalar);
 int qmatrix_scalar_and(q_t *r, const q_t *a, const q_t scalar);
 int qmatrix_scalar_or (q_t *r, const q_t *a, const q_t scalar);
 int qmatrix_scalar_xor(q_t *r, const q_t *a, const q_t scalar);
+
+/* Expression evaluator */
 
 int qexpr(qexpr_t *e, const char *expr);
 int qexpr_init(qexpr_t *e);
 int qexpr_error(qexpr_t *e);
 q_t qexpr_result(qexpr_t *e);
 const qoperations_t *qop(const char *op);
+
+/* A better cosine/sine, not in Q format */
+
+int16_t furman_sin(int16_t x); /* SINE:   1 Furman = 1/65536 of a circle */
+int16_t furman_cos(int16_t x); /* COSINE: 1 Furman = 1/65536 of a circle */
 
 #ifdef __cplusplus
 }

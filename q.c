@@ -6,34 +6,14 @@
  * @site <https://github.com/howerj/q>
  *
  *  TODO:
- *      - Sort out difference between 32-bit and 64-bit versions
- *      of this library (specifically atan2).
- * 	- add modulo *and* remainder
- * 	  - <https://news.ycombinator.com/item?id=17817758>
- * 	  - <https://rob.conery.io/2018/08/21/mod-and-remainder-are-not-the-same/>
  * 	- work out bounds for all functions, especially for CORDIC
  * 	functions
  * 	- Assert inputs are in correct domain, better unit tests, for the
  * 	expression evaluator errors should be returned if the domain is
  * 	incorrect instead.
- * 	- Configuration options for different methods of evaluation;
- * 	- Add matrix functions
- * 	- 'Manual' versions of multiplication and division could be
- * 	optionally selected.
- * NOTES:
- * 	- <https://en.wikipedia.org/wiki/Modulo_operation>
- *	- move many of the smaller functions to the header, make inline with 
- *	extern inline definitions here
- *	- clean up API, removing redundant functions, remove global options
- *	and just use saturation.
- *	- improve number conversion functions; allow exponential format,
- *	'%g' format equivalent, allow custom base to be passed to functions
- *	instead of via a global.
- *	- https://stackoverflow.com/questions/17504316/what-happens-with-an-extern-inline-function
- *	- https://stackoverflow.com/questions/25415197/should-i-deliberately-inline-functions-across-translation-units-in-c99?noredirect=1&lq=1
- *	- An much simpler way of calculating sine/cosine is available at: http://files.righto.com/calculator/sinclair_scientific_simulator.html,
- *	which was used in a cheap Sinclair scientific calculator
- */
+ * 	- Configuration options for different methods of evaluation
+ *	- Clean up API, removing redundant functions, remove global options
+ *	and just use saturation. */
 
 #include "q.h"
 #include <assert.h>
@@ -205,11 +185,11 @@ q_t qwithin_interval(q_t v, q_t expected, q_t allowance) {
      integer, fractional, divisor
    So Q numbers can be generated more easily */
 /*
-q_t qconstruct(const int integer, const unsigned long fractional, const unsigned nexponent) {
+q_t qconstruct(const int integer, const u_t fractional, const unsigned nexponent) {
 	// assert(integer <= max_q_int && integer => min_q_int); // no effect is sizeof(int) <= sizeof(q_t)
 	// assert(fractional <= max_fract_int && fractional => min_frac_int);
 	const q_t i = qint(integer);
-	unsigned long f = (fractional << QBITS) / (10ul * nexponent);
+	u_t f = (fractional << QBITS) / (10ul * nexponent);
 	// assert((f & QHIGH_QBITS) == 0);
 	return i | f;
 } */
@@ -294,14 +274,9 @@ q_t qrem(const q_t a, const q_t b) {
 	return qsub(a, qmul(qtrunc(qdiv(a, b)), b));
 }
 
-/*q_t qmod(q_t a, q_t b) {
-	a = qabs(a);
-	b = qabs(b);
-	const q_t nb = qnegate(b);
-	while (qeqless(a, nb)) a = qadd(a, b);
-	while (qeqmore(a,  b)) a = qadd(a, nb);
-	return a;
-}*/
+q_t qmod(q_t a, q_t b) {
+	return qsub(a, qmul(qfloor(qdiv(a, b)), b));
+}
 
 /********* Basic Library Routines ********************************************/
 /********* Numeric Input/Output **********************************************/
@@ -327,7 +302,7 @@ static void reverse(char *s, const size_t length) {
 		swap(&s[i], &s[length - i - 1]);
 }
 
-static int uprint(u_t p, char *s, const size_t length, const long base) {
+static int uprint(u_t p, char *s, const size_t length, const d_t base) {
 	assert(s);
 	assert(base >= 2 && base <= 36);
 	if (length < 2)
@@ -345,7 +320,7 @@ static int uprint(u_t p, char *s, const size_t length, const long base) {
 }
 
 /* <https://codereview.stackexchange.com/questions/109212> */
-int qsprintb(q_t p, char *s, size_t length, const unsigned long base) {
+int qsprintb(q_t p, char *s, size_t length, const u_t base) {
 	assert(s);
 	const int negative = !!qisnegative(p);
 	if (negative)
@@ -389,21 +364,21 @@ static inline int extract(unsigned char c, const int radix) {
 	return -1;
 }
 
-static inline q_t qmk(long integer, unsigned long fractional) {
+static inline q_t qmk(d_t integer, u_t fractional) {
 	const int negative = integer < 0;
 	integer = negative ? -integer : integer;
 	const q_t r = qcons((d_t)integer, fractional);
 	return negative ? qnegate(r) : r;
 }
 
-int qnconvb(q_t *q, const char *s, size_t length, const long base) {
+int qnconvb(q_t *q, const char *s, size_t length, const d_t base) {
 	assert(q);
 	assert(s);
 	*q = QINT(0);
 	if (length < 1)
 		return -1;
-	const long idp = qconf.dp;
-	long hi = 0, lo = 0, places = 1, negative = 0, overflow = 0;
+	const d_t idp = qconf.dp;
+	d_t hi = 0, lo = 0, places = 1, negative = 0, overflow = 0;
 	size_t sidx = 0;
 	assert(base >= 2 && base <= 36);
 
@@ -415,7 +390,7 @@ int qnconvb(q_t *q, const char *s, size_t length, const long base) {
 	}
 
 	for (; sidx < length && s[sidx]; sidx++) {
-		const long e = extract(s[sidx], base);
+		const d_t e = extract(s[sidx], base);
 		if (e < 0)
 			break;
 		hi = (hi * base) + e;
@@ -441,7 +416,7 @@ int qnconvb(q_t *q, const char *s, size_t length, const long base) {
 	}
 	if (!places)
 		return -5;
-	lo = ((long)((unsigned long)lo << QBITS) / places);
+	lo = ((d_t)((u_t)lo << QBITS) / places);
 done:
 	{
 		const q_t nq = qmk(hi, lo);
@@ -461,7 +436,7 @@ int qconv(q_t *q, const char * const s) {
 	return qnconv(q, s, strlen(s));
 }
 
-int qconvb(q_t *q, const char * const s, const long base) {
+int qconvb(q_t *q, const char * const s, const d_t base) {
 	assert(s);
 	return qnconvb(q, s, strlen(s), base);
 }
@@ -673,7 +648,7 @@ q_t qatan(const q_t t) {
 	return z;
 }
 
-q_t qatan2(const q_t a, const q_t b) { // atan(a/b)
+q_t qatan2(const q_t a, const q_t b) {
 	q_t x = b, y = a, z = QINT(0);
 	if (qequal(b, QINT(0))) {
 		assert(qunequal(a, QINT(0)));
@@ -909,8 +884,7 @@ q_t qasin(const q_t t) {
 }
 
 q_t qacos(const q_t t) {
-	assert(qless(qabs(t), QINT(1)));
-	assert(qunequal(t, QINT(0)));
+	assert(qeqless(qabs(t), QINT(1)));
 	/* can also use: return qatan(qdiv(qsqrt(qsub(QINT(1), qmul(t, t))), t)); */
 	return qatan2(qsqrt(qsub(QINT(1), qmul(t, t))), t);
 }
@@ -974,7 +948,12 @@ q_t qfilter_value(const qfilter_t *f) {
 
 /* Must be called at a constant rate; perhaps a PID which takes call time
  * into account could be made, but that would complicate things. Differentiator
- * term needs filtering also. */
+ * term needs filtering also. 
+ *
+ * TODO: Take into account time delta
+ * - See
+ *   <https://www.quora.com/Do-I-need-to-sample-at-a-constant-rate-for-PID-control-or-is-it-sufficient-to-know-the-time-at-which-my-sample-was-taken-even-if-the-increment-varies>
+ * */
 q_t qpid_update(qpid_t *pid, const q_t error, const q_t position) {
 	assert(pid);
 	const q_t p  = qmul(pid->p_gain, error);
@@ -1122,6 +1101,8 @@ int qmatrix_scalar_add(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_
 int qmatrix_scalar_sub(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qsub, scalar); }
 int qmatrix_scalar_mul(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qmul, scalar); }
 int qmatrix_scalar_div(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qdiv, scalar); }
+int qmatrix_scalar_mod(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qmod, scalar); }
+int qmatrix_scalar_rem(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qrem, scalar); }
 int qmatrix_scalar_and(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qand, scalar); }
 int qmatrix_scalar_or (q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qor,  scalar); }
 int qmatrix_scalar_xor(q_t *r, const q_t *a, const q_t scalar) { return qmatrix_apply_scalar(r, a, qxor, scalar); }
@@ -1325,9 +1306,7 @@ size_t qmatrix_string_length(const q_t *m) {
 /********* Sine/Cosine By Another Method *************************************/
 /* See <https://github.com/jamesbowman/sincos> 
  * and "Math Toolkit for Real-Time Programming" by Jack Crenshaw */
-#if 0
-// TODO:
-// - Convert to Q format before/after calculation
+// TODO: Convert to Q format before/after calculation
 static int16_t _sine(const int16_t y) {
 	const int16_t s1 = 0x6487, s3 = -0x2953, s5 = 0x04f8;
 	const int16_t z = arshift((int32_t)y * y, 12);
@@ -1347,17 +1326,17 @@ static int16_t _cosine(int16_t y) {
 	return c0 + prod;
 }
 
-int16_t sine(int16_t x) {
+int16_t furman_sin(int16_t x) {
 	const int16_t n = 3 & arshift(x + 0x2000, 14);
 	x -= n << 14;
 	const int16_t r = (n & 1) ? _cosine(x) : _sine(x);
 	return (n & 2) ? -r : r;
 }
 
-int16_t cosine(int16_t x) {
-	return sine(x + 0x4000);
+int16_t furman_cos(int16_t x) {
+	return furman_sin(x + 0x4000);
 }
-#endif
+
 /********* Sine/Cosine By Another Method *************************************/
 /********* Expression Evaluator **********************************************/
 
@@ -1422,6 +1401,14 @@ static q_t check_nlez(qexpr_t *e, q_t a) { // Not Less Equal Zero
 	return QINT(0);
 }
 
+static q_t check_alo(qexpr_t *e, q_t a) {
+	if (qmore(qabs(a), QINT(1))) {
+		error(e, "out of range [-1, 1]");
+		return -QINT(1);
+	}
+	return QINT(0);
+}
+
 const qoperations_t *qop(const char *op) {
 	assert(op);
 	/* This list could possibly be exported and used in the
@@ -1449,12 +1436,12 @@ const qoperations_t *qop(const char *op) {
 		{  ">>",        .eval.binary  =  qlrs,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  0,  },
 		{  "^",         .eval.binary  =  qxor,         .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
 		{  "_exp",      .eval.unary   =  qcordic_exp,  .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  1,  },
-		{  "_ln",       .eval.unary   =  qcordic_ln,   .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  1,  },
-		{  "_sqrt",     .eval.unary   =  qcordic_sqrt, .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  1,  },
+		{  "_ln",       .eval.unary   =  qcordic_ln,   .check.unary   =  check_nlez,  5,  1,  ASSOCIATE_RIGHT,  1,  },
+		{  "_sqrt",     .eval.unary   =  qcordic_sqrt, .check.unary   =  check_nlz,   5,  1,  ASSOCIATE_RIGHT,  1,  },
 		{  "abs",       .eval.unary   =  qabs,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
-		{  "acos",      .eval.unary   =  qacos,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "acos",      .eval.unary   =  qacos,        .check.unary   =  check_alo,   5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "arshift",   .eval.binary  =  qars,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
-		{  "asin",      .eval.unary   =  qasin,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "asin",      .eval.unary   =  qasin,        .check.unary   =  check_alo,   5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "atan",      .eval.unary   =  qatan,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "atan2",     .eval.binary  =  qatan2,       .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "c*",        .eval.binary  =  qcordic_mul,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
@@ -1474,6 +1461,7 @@ const qoperations_t *qop(const char *op) {
 		{  "lshift",    .eval.binary  =  qlls,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "max",       .eval.binary  =  qmax,         .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "min",       .eval.binary  =  qmin,         .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "mod",       .eval.binary  =  qmod,         .check.binary  =  check_div0,  3,  2,  ASSOCIATE_LEFT,   0,  },
 		{  "neg?",      .eval.unary   =  qisnegative,  .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "negate",    .eval.unary   =  qnegate,      .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "odd?",      .eval.unary   =  qisodd,       .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },

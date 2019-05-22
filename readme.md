@@ -40,11 +40,14 @@ not exactly paying for this library now, are you? Caveat Auditor perhaps).
 | qsub(a, b)    | a \-  b     |             |          | Subtraction                                     |
 | qdiv(a, b)    | a /   b     | b != 0      | Yes      | Division                                        |
 | qmul(a, b)    | a \*  b     |             |          | Multiplication                                  |
-| qrem(a, b)    | a rem b     | b != 0      | Yes      | Remainder                                       |
+| qrem(a, b)    | a rem b     | b != 0      | Yes      | Remainder: remainder after division             |
+| qmod(a, b)    | a mod b     | b != 0      | Yes      | Modulo                                          |
 | qsin(theta)   | sin(theta)  |             |          | Sine                                            |
 | qcos(theta)   | cos(theta)  |             |          | Cosine                                          |
 | qtan(theta)   | tan(theta)  |             |          | Tangent                                         |
 | qcot(theta)   | cot(theta)  |             |          | Cotangent                                       |
+| qasin(x)      | asin(x)     | abs(x) <= 1 | Yes      | Arcsine                                         |
+| qacos(x)      | acos(x)     | abs(x) <= 1 | Yes      | Arccosine                                       |
 | qhypot(a, b)  | hypot(a, b) |             |          | Hypotenuse; sqrt(a\*a + b\*b)                   |
 | qatan(t)      | atan(t)     |             |          | Arctangent                                      |
 | qsinh(a)      | sinh(a)     |             |          | Hyperbolic Sine                                 |

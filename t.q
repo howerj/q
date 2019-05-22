@@ -10,13 +10,18 @@
 /      0.5 +-     0.0 |  1.0   2.0
 /      4.8 +-  0.0001 |  2.4   0.5
 /     -4.8 +-  0.0001 | -2.4   0.5
-# remainder/modulo needs to be sorted out
 rem    1.0 +-  0.0001 |  7.0   2.0
 rem    0.0 +-  0.0001 |  7.0   3.5
 rem    2.0 +-  0.0001 |  8.0   3.0
 rem    1.4 +-  0.0001 |  8.0   3.3
 rem    1.4 +-  0.0001 |  8.0  -3.3
 rem   -1.4 +-  0.0001 | -8.0  -3.3
+mod    1.0 +-  0.0001 |  7.0   2.0
+mod    0.0 +-  0.0001 |  7.0   3.5
+mod    2.0 +-  0.0001 |  8.0   3.0
+mod    1.4 +-  0.0001 |  8.0   3.3
+mod   -1.0 +-  0.0001 |  8.0  -3.0
+mod   -2.0 +-  0.0001 | -8.0  -3.0
 *     -2.5 +-     0.0 | 1.25  -2.0
 *      0.0 +-     0.0 |  5.0   0.0
 *      0.0 +-     0.0 |  0.0   2.0
@@ -228,20 +233,24 @@ pow     0.5      +- 0.02 | 2 -1
 pow     0.25     +- 0.02 | 4 -1
 pow     0.125    +- 0.02 | 8 -1
 pow     -27      +- 0.02 | -3 3
-# pow returns complex numbers for negative bases and non-integer exponents
+# 'pow' should return complex numbers for negative bases with
+# non-integer exponents, this 'pow' cannot do that.
 pow     1        +- 0.02 | 0  3
 pow     1        +- 0.02 | 0  3.5
 pow   0.0625   +- 0.02 | 16 -1
-# Error becomes to high for small numbers
+# Error becomes too high for small numbers
 # pow     0.01       +- 0.02 | 0.1 2
 asin    0.5235   +- 0.02 | .5
 asin   -0.5235   +- 0.02 | -.5
 asin   -1.1197   +- 0.02 | -.9
-# TODO: Test acos over negative values
-# More testing of these functions
+acos    1.5707   +- 0.02 | 0.0
 acos    1.0471   +- 0.02 | 0.5
 acos    0.4510   +- 0.02 | 0.9
-atan2   0.78539  +- 0.02 | 0.5 0.5
+acos    2.0943   +- 0.02 | -0.5
+acos    0.0      +- 0.02 | 1.0
+acos    3.1415   +- 0.02 | -1.0
+# does not work -> atan2   0.78539  +- 0.02 | 0.5 0.5
+atan2   0.7853  +- 0.02 | 0.5 0.5
 atan2   1.10714  +- 0.02 | 2.0 1.0
 atan2   1.5707   +- 0.02 | 1. 0.
 atan2  -1.5707   +- 0.02 | -1. 0.
