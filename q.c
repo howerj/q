@@ -6,6 +6,8 @@
  * @site <https://github.com/howerj/q>
  *
  *  TODO:
+ *      - Improve algorithms used
+ *      - Optional Q <-> float/double routines
  * 	- work out bounds for all functions, especially for CORDIC
  * 	functions
  * 	- Assert inputs are in correct domain, better unit tests, for the
@@ -13,7 +15,9 @@
  * 	incorrect instead.
  * 	- Configuration options for different methods of evaluation
  *	- Clean up API, removing redundant functions, remove global options
- *	and just use saturation. */
+ *	and just use saturation. 
+ *	- BUG: Too many numbers after decimal place causes number conversion
+ *	problems. */
 
 #include "q.h"
 #include <assert.h>
@@ -25,8 +29,8 @@
 #include <string.h>
 
 #define UNUSED(X)               ((void)(X))
+#define BOOLIFY(X)              (!!(X))
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
-#define IMPLIES(X, Y)           assert((!(X)) || (Y))
 #define MULTIPLIER              (INT16_MAX)
 #define UMAX                    (UINT32_MAX)
 #define DMIN                    (INT32_MIN)
@@ -65,6 +69,19 @@ qconf_t qconf = { /* Global Configuration Options */
 
 /********* Basic Library Routines ********************************************/
 
+
+static inline void implies(const int x, const int y) {
+	assert(!x || y);
+}
+
+static inline void mutual(const int x, const int y) { /* mutual implication */
+	assert(BOOLIFY(x) == BOOLIFY(y));
+}
+
+static inline void exclusive(const int x, const int y) {
+	assert(BOOLIFY(x) != BOOLIFY(y));
+}
+
 static void static_assertions(void) {
 	BUILD_BUG_ON(CHAR_BIT != 8);
 	BUILD_BUG_ON((sizeof(q_t)*CHAR_BIT) != (QBITS * 2));
@@ -98,14 +115,17 @@ inline d_t arshift(const d_t v, const unsigned p) {
 	u_t vn = v;
 	if (v >= 0l)
 		return vn >> p;
-	const u_t leading = ((u_t)(-1l)) << ((sizeof(v)*CHAR_BIT) - p);
+	const u_t leading = ((u_t)(-1l)) << ((sizeof(v)*CHAR_BIT) - p - 1);
 	return leading | (vn >> p);
 }
 
 inline d_t divn(const d_t v, const unsigned p) {
-	return v / (1l << p); /**@todo replace with portable bit shifting version */
-	///*const d_t m = -!!(v < 0);
-	//return (v + (m & (((d_t)1 << p) + (d_t)-1UL))) >> p;*/
+	// return v / (1l << p);
+	const u_t shifted = ((u_t)v) >> p;
+	if (qispositive(v))
+		return shifted;
+	const u_t leading = ((u_t)(-1l)) << ((sizeof(v)*CHAR_BIT) - p - 1);
+	return leading | shifted;
 }
 
 static inline u_t qhigh(const q_t q) { return ((u_t)q) >> QBITS; }
@@ -124,7 +144,7 @@ q_t qlong(long l)                       { return qint(l); }
 long long qtoll(const q_t q)            { return qtoi(q); }
 q_t qvlong(long long ll)                { return qint(ll); }
 
-q_t qisnegative(const q_t a)            { return QINT(!!(qhigh(a) & QHIGH)); }
+q_t qisnegative(const q_t a)            { return QINT(BOOLIFY(qhigh(a) & QHIGH)); }
 q_t qispositive(const q_t a)            { return QINT( !(qhigh(a) & QHIGH)); }
 q_t qisinteger(const q_t a)             { return QINT( !qlow(a)); }
 q_t qisodd(const q_t a)                 { return QINT(qisinteger(a) &&  (qhigh(a) & 1)); }
@@ -148,7 +168,7 @@ q_t qxor(const q_t a, const q_t b)      { return a ^ b; }
 q_t qor(const q_t a, const q_t b)       { return a | b; }
 q_t qinvert(const q_t a)                { return ~a; }
 q_t qnot(const q_t a)                   { return QINT(!a); }
-q_t qlogical(const q_t a)               { return QINT(!!a); }
+q_t qlogical(const q_t a)               { return QINT(BOOLIFY(a)); }
 
 q_t qlrs(const q_t a, const q_t b)      { /* assert low bits == 0? */ return (u_t)a >> (u_t)qtoi(b); }
 q_t qlls(const q_t a, const q_t b)      { return (u_t)a << b; }
@@ -322,17 +342,17 @@ static int uprint(u_t p, char *s, const size_t length, const d_t base) {
 /* <https://codereview.stackexchange.com/questions/109212> */
 int qsprintb(q_t p, char *s, size_t length, const u_t base) {
 	assert(s);
-	const int negative = !!qisnegative(p);
+	const int negative = BOOLIFY(qisnegative(p));
 	if (negative)
 		p = qnegate(p);
-	const d_t hi = qhigh(p);
+	const d_t idp = qconf.dp, hi = qhigh(p);
 	char frac[QBITS+2] = { '.' };
 	memset(s, 0, length);
 	assert(base >= 2 && base <= 36);
 	u_t lo = qlow(p);
 	size_t i = 1;
 	for (i = 1; lo; i++) {
-		if (qconf.dp >= 0 && (int)i >= qconf.dp)
+		if (idp >= 0 && (int)i >= idp)
 			break;
 		lo *= base;
 		frac[i] = itoch(lo >> QBITS);
@@ -374,13 +394,13 @@ static inline q_t qmk(d_t integer, u_t fractional) {
 int qnconvb(q_t *q, const char *s, size_t length, const d_t base) {
 	assert(q);
 	assert(s);
+	assert(base >= 2 && base <= 36);
 	*q = QINT(0);
 	if (length < 1)
 		return -1;
 	const d_t idp = qconf.dp;
 	d_t hi = 0, lo = 0, places = 1, negative = 0, overflow = 0;
 	size_t sidx = 0;
-	assert(base >= 2 && base <= 36);
 
 	if (s[sidx] == '-') {
 		if (length < 2)
@@ -853,8 +873,8 @@ q_t qexp(const q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
 }
 
 q_t qpow(q_t n, q_t exp) {
-	IMPLIES(qisnegative(n), qisinteger(exp));
-	IMPLIES(qequal(n, QINT(0)), qunequal(exp, QINT(0)));
+	implies(qisnegative(n), qisinteger(exp));
+	implies(qequal(n, QINT(0)), qunequal(exp, QINT(0)));
 	if (qequal(QINT(0), n))
 		return QINT(1);
 	if (qisnegative(n)) {
@@ -1007,7 +1027,7 @@ int qmatrix_is_valid(const q_t *m) {
 int qmatrix_resize(q_t *m, const size_t row, const size_t column) {
 	const size_t rc = row * column;
 	const size_t sz = m[LENGTH];
-	if (rc < row || rc < column) /* overflow */
+	if ((row && column) && (rc < row || rc < column)) /* overflow */
 		return -1;
 	if (rc > sz)
 		return -1;
@@ -1025,8 +1045,7 @@ int qmatrix_apply_unary(q_t *r, const q_t *a, q_t (*func)(q_t)) {
        	const q_t *ma = &a[DATA];
 	q_t *mr = &r[DATA];
 	const size_t arows = a[ROW], acolumns = a[COLUMN];
-	const size_t rrows = r[ROW], rcolumns = r[COLUMN];
-	if (arows != rrows || acolumns != rcolumns)
+	if (qmatrix_resize(r, arows, acolumns) < 0)
 		return -1;
 	for (size_t i = 0; i < arows; i++)
 		for (size_t j = 0; j < acolumns; j++)
@@ -1043,8 +1062,7 @@ int qmatrix_apply_scalar(q_t *r, const q_t *a, q_t (*func)(q_t, q_t), const q_t 
        	const q_t *ma = &a[DATA];
 	q_t *mr = &r[DATA];
 	const size_t arows = a[ROW], acolumns = a[COLUMN];
-	const size_t rrows = r[ROW], rcolumns = r[COLUMN];
-	if (arows != rrows || acolumns != rcolumns)
+	if (qmatrix_resize(r, arows, acolumns) < 0)
 		return -1;
 	for (size_t i = 0; i < arows; i++)
 		for (size_t j = 0; j < acolumns; j++)
@@ -1079,7 +1097,7 @@ int qmatrix_apply_binary(q_t *r, const q_t *a, const q_t *b, q_t (*func)(q_t, q_
 
 static q_t qfz(q_t a) { UNUSED(a); return QINT(0); }
 static q_t qf1(q_t a) { UNUSED(a); return QINT(1); }
-static q_t qid(q_t a) { return a; }
+// static q_t qid(q_t a) { return a; }
 
 /* It will speed things up if you can force the apply functions to
  * be inlined. A smart enough compiler should realize the function
@@ -1090,7 +1108,6 @@ int qmatrix_logical(q_t *r, const q_t *a) { return qmatrix_apply_unary(r, a, qlo
 int qmatrix_not(q_t *r, const q_t *a)     { return qmatrix_apply_unary(r, a, qnot); }
 int qmatrix_signum(q_t *r, const q_t *a)  { return qmatrix_apply_unary(r, a, qsignum); }
 int qmatrix_invert(q_t *r, const q_t *a)  { return qmatrix_apply_unary(r, a, qinvert); }
-int qmatrix_copy(q_t *r, const q_t *a)  { return qmatrix_apply_unary(r, a, qid); }
 int qmatrix_add(q_t *r, const q_t *a, const q_t *b) { return qmatrix_apply_binary(r, a, b, qadd); }
 int qmatrix_sub(q_t *r, const q_t *a, const q_t *b) { return qmatrix_apply_binary(r, a, b, qsub); }
 int qmatrix_and(q_t *r, const q_t *a, const q_t *b) { return qmatrix_apply_binary(r, a, b, qand); }
@@ -1126,6 +1143,21 @@ int qmatrix_identity(q_t *r) {
 	return 0;
 }
 
+int qmatrix_copy(q_t *r, const q_t *a)  { 
+	assert(r);
+	assert(qmatrix_is_valid(r));
+	assert(a);
+	assert(qmatrix_is_valid(a));
+	const size_t arows = a[ROW], acolumns = a[COLUMN];
+	const size_t copy  = arows * acolumns * sizeof (q_t);
+	if ((arows && acolumns) && (copy < arows || copy < acolumns))
+		return -1;
+	if (qmatrix_resize(r, arows, acolumns) < 0)
+		return -1;
+	memcpy(&r[DATA], &a[DATA], copy);
+	return 0;
+}
+
 q_t qmatrix_trace(const q_t *m) {
 	assert(m);
 	assert(qmatrix_is_square(m));
@@ -1156,13 +1188,14 @@ q_t qmatrix_equal(const q_t *a, const q_t *b) {
 }
 
 static q_t determine(const q_t *m, const size_t length) {
+	assert(m);
 	if (length == 1)
 		return m[0];
 	if (length == 2)
 		return qsub(qmul(m[0], m[3]), qmul(m[1], m[2]));
 	size_t co1 = 0, co2 = 0;
 	q_t det = QINT(0), sgn = QINT(1);
-	q_t co[length*length];
+	q_t co[length*length]; // TODO: Pass a temporary array to qmatrix_determinant
 	for (size_t i = 0; i < length; i++) {
 		for (size_t j = 0; j < length; j++)
 			for (size_t k = 0; k < length; k++)
@@ -1305,8 +1338,12 @@ size_t qmatrix_string_length(const q_t *m) {
 /********* Matrix Operations *************************************************/
 /********* Sine/Cosine By Another Method *************************************/
 /* See <https://github.com/jamesbowman/sincos> 
- * and "Math Toolkit for Real-Time Programming" by Jack Crenshaw */
-// TODO: Convert to Q format before/after calculation
+ * and "Math Toolkit for Real-Time Programming" by Jack Crenshaw 
+ *
+ * The naming of these functions ('furman_') is incorrect, they do their
+ * computation on numbers represented in Furmans but they do not use a 'Furman
+ * algorithm'. As I do not have a better name, the name shall stick. */
+
 static int16_t _sine(const int16_t y) {
 	const int16_t s1 = 0x6487, s3 = -0x2953, s5 = 0x04f8;
 	const int16_t z = arshift((int32_t)y * y, 12);
@@ -1394,6 +1431,7 @@ static q_t check_nlz(qexpr_t *e, q_t a) { // Not Less Zero
 }
 
 static q_t check_nlez(qexpr_t *e, q_t a) { // Not Less Equal Zero
+	assert(e);
 	if (qeqless(a, QINT(0))) { 
 		error(e, "negative argument");
 		return -QINT(1);
@@ -1402,6 +1440,7 @@ static q_t check_nlez(qexpr_t *e, q_t a) { // Not Less Equal Zero
 }
 
 static q_t check_alo(qexpr_t *e, q_t a) {
+	assert(e);
 	if (qmore(qabs(a), QINT(1))) {
 		error(e, "out of range [-1, 1]");
 		return -QINT(1);
@@ -1411,10 +1450,6 @@ static q_t check_alo(qexpr_t *e, q_t a) {
 
 const qoperations_t *qop(const char *op) {
 	assert(op);
-	/* This list could possibly be exported and used in the
-	test program. A list of function pointers containing all
-	operators (even if they are not used in the expression 
-	evaluator) would be useful. */
 	static const qoperations_t ops[] = {
 		/* Binary Search Table: Use 'LC_ALL="C" sort -k 2 < table' to sort this */
 		{  "!",         .eval.unary   =  qnot,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
@@ -1565,7 +1600,7 @@ static int op_eval(qexpr_t *e) {
 	if (!pop)
 		return -1;
 	const q_t a = number_pop(e);
-	const int exists = pop->arity == 1 ? !!(pop->eval.unary) : !!(pop->eval.binary);
+	const int exists = pop->arity == 1 ? BOOLIFY(pop->eval.unary) : BOOLIFY(pop->eval.binary);
 	if (!exists) {
 		error(e, "syntax error");
 		return -1;
@@ -1755,7 +1790,7 @@ int qexpr(qexpr_t *e, const char *expr) {
 		error(e, "invalid expression: %d", e->numbers_count);
 		return -1;
 	}
-	IMPLIES(e->error == 0, e->numbers_count == 1);
+	implies(e->error == 0, e->numbers_count == 1);
 end:
 	return e->error == 0 ? 0 : -1;
 }

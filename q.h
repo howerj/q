@@ -47,7 +47,7 @@ typedef int64_t ld_t; /**< Double width of Q, signed, for internal calculations,
 typedef int32_t  d_t; /* same width as Q,  signed, but not in Q format */
 typedef uint32_t u_t; /* same width as Q, unsigned, but not in Q format */
 
-typedef struct {
+typedef PREPACK struct {
 	size_t whole,      /**< number of bits for whole, or integer, part of Q number */
 	       fractional; /**< number of bits for fractional part of Q number */
 	const q_t zero,    /**< the constant '0' */
@@ -61,25 +61,25 @@ typedef struct {
 	      ln10,        /**< the natural logarithm of 10 */
 	      min,         /**< most negative 'q' number */
 	      max;         /**< most positive 'q' number */
-} qinfo_t;
+} POSTPACK qinfo_t;
 
-typedef struct {
+typedef PREPACK struct {
 	q_t rc,        /**< time constant */
 	    time,      /**< time of previous measurement */
 	    raw,       /**< previous raw value */
 	    filtered;  /**< filtered value */
-} qfilter_t; /**< High/Low Pass Filter */
+} POSTPACK qfilter_t; /**< High/Low Pass Filter */
 
-typedef struct {
+typedef PREPACK struct {
 	q_t d_gain, d_state;               /**< differentiator; gain, state */
 	q_t i_gain, i_state, i_min, i_max; /**< integrator; gain, state, minimum and maximum */
 	q_t p_gain;                        /**< proportional gain */
-} qpid_t; /**< PID Controller <https://en.wikipedia.org/wiki/PID_controller> */
+} POSTPACK qpid_t; /**< PID Controller <https://en.wikipedia.org/wiki/PID_controller> */
 
 struct qexpr;
 typedef struct qexpr qexpr_t;
 
-typedef struct {
+typedef PREPACK struct {
 	char *name;
 	union {
 		q_t (*unary)  (q_t a);
@@ -90,14 +90,14 @@ typedef struct {
 		q_t (*binary) (qexpr_t *e, q_t a1, q_t a2);
 	} check;
 	int precedence, arity, assocativity, hidden;
-} qoperations_t; /**< use in the expression evaluator */
+} POSTPACK qoperations_t; /**< use in the expression evaluator */
 
-typedef struct {
+typedef PREPACK struct {
 	char *name;
 	q_t value;
-} qvariable_t; /**< Variable which can be used with the expression evaluator */
+} POSTPACK qvariable_t; /**< Variable which can be used with the expression evaluator */
 
-struct qexpr {
+struct PREPACK qexpr {
 	const qoperations_t **ops, *lpar, *rpar, *negate, *minus;
 	qvariable_t **vars;
 	char id[QMAX_ID];
@@ -111,18 +111,18 @@ struct qexpr {
 	size_t vars_max;
 	int error;
 	int initialized;
-}; /**< An expression evaluator for the Q library */
+} POSTPACK; /**< An expression evaluator for the Q library */
 
 typedef q_t (*qbounds_t)(ld_t s);
 
 q_t qbound_saturate(ld_t s); /**< default over/underflow behavior, saturation */
 q_t qbound_wrap(ld_t s);     /**< over/underflow behavior, wrap around */
 
-typedef struct {
+typedef PREPACK struct {
 	qbounds_t bound; /**< handles saturation when a number over or underflows */
 	int dp;          /**< decimal points to print, negative specifies maximum precision */
 	unsigned base;   /**< base to use for numeric number conversion */
-} qconf_t; /**< Q format configuration options */
+} POSTPACK qconf_t; /**< Q format configuration options */
 
 extern const qinfo_t qinfo; /**< information about the format and constants */
 extern qconf_t qconf;       /**< @warning GLOBAL Q configuration options */
