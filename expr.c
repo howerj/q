@@ -1,6 +1,6 @@
-/**@brief   Small Expression Evaluator for Q library
- * @license MIT
- * @author Richard James Howe
+/* Project:  Small Expression Evaluator for Q library
+ * Author:   Richard James Howe
+ * License:  The Unlicense
  * See: <https://en.wikipedia.org/wiki/Shunting-yard_algorithm> */
 
 #include <assert.h>

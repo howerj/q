@@ -1,13 +1,11 @@
-/**@file q.c
- * @brief Q-Number (Q16.16, signed) library
- * @copyright Richard James Howe (2018)
- * @license MIT
- * @email howe.r.j.89@gmail.com
- * @site <https://github.com/howerj/q>
- *
+/* Project: Q-Number (Q16.16, signed) library
+ * Author:  Richard James Howe
+ * License: The Unlicense
+ * Email:   howe.r.j.89@gmail.com
+ * Repo:    <https://github.com/q> */
+
+/*
  *  TODO:
- *      - Improve algorithms used
- *      - Optional Q <-> float/double routines
  * 	- work out bounds for all functions, especially for CORDIC
  * 	functions
  * 	- Assert inputs are in correct domain, better unit tests, for the
@@ -132,7 +130,6 @@ static inline u_t qhigh(const q_t q) { return ((u_t)q) >> QBITS; }
 static inline u_t qlow(const q_t q)  { return ((u_t)q) & QMASK; }
 static inline q_t qcons(const u_t hi, const u_t lo) { return (hi << QBITS) | (lo & QMASK); }
 
-/**@todo move many of these to the header, so they can be inlined */
 int qtoi(const q_t toi)                 { return ((lu_t)((ld_t)toi)) >> QBITS; }
 q_t qint(const int toq)                 { return ((u_t)((d_t)toq)) << QBITS; }
 signed char qtoc(const q_t q)           { return qtoi(q); }
@@ -176,9 +173,8 @@ q_t qars(const q_t a, const q_t b)      { return arshift(a, qtoi(b)); }
 q_t qals(const q_t a, const q_t b)      { return qsat((lu_t)a << b); }
 q_t qsign(const q_t a)                  { return qisnegative(a) ? -QINT(1) : QINT(1); }
 q_t qsignum(const q_t a)                { return a ? qsign(a) : QINT(0); }
-// Add rotate, bit count, binary logarithm, ... */
 
-int qapproxequal(const q_t a, const q_t b, const q_t epsilon) { /**@todo test this, compare with qwithin in 't.c'*/
+int qapproxequal(const q_t a, const q_t b, const q_t epsilon) {
 	assert(qeqmore(epsilon, qint(0))); 
 	return qless(qabs(qsub(a, b)), epsilon); 
 }
@@ -200,19 +196,6 @@ q_t qwithin_interval(q_t v, q_t expected, q_t allowance) {
 	const q_t b2 = qsub(expected, allowance);
 	return qwithin(v, b1, b2);
 }
-
-/** @todo create a conversion routine that takes three numbers:
-     integer, fractional, divisor
-   So Q numbers can be generated more easily */
-/*
-q_t qconstruct(const int integer, const u_t fractional, const unsigned nexponent) {
-	// assert(integer <= max_q_int && integer => min_q_int); // no effect is sizeof(int) <= sizeof(q_t)
-	// assert(fractional <= max_fract_int && fractional => min_frac_int);
-	const q_t i = qint(integer);
-	u_t f = (fractional << QBITS) / (10ul * nexponent);
-	// assert((f & QHIGH_QBITS) == 0);
-	return i | f;
-} */
 
 q_t qfloor(const q_t q) {
 	return q & ~QMASK;
@@ -297,9 +280,6 @@ q_t qrem(const q_t a, const q_t b) {
 q_t qmod(q_t a, q_t b) {
 	return qsub(a, qmul(qfloor(qdiv(a, b)), b));
 }
-
-/********* Basic Library Routines ********************************************/
-/********* Numeric Input/Output **********************************************/
 
 static char itoch(const unsigned ch) {
 	assert(ch < 36);
@@ -461,9 +441,6 @@ int qconvb(q_t *q, const char * const s, const d_t base) {
 	return qnconvb(q, s, strlen(s), base);
 }
 
-
-/********* Numeric Input/Output **********************************************/
-/********* CORDIC Routines ***************************************************/
 
 typedef enum {
 	CORDIC_MODE_VECTOR_E/* = 'VECT'*/,
@@ -828,10 +805,7 @@ q_t qcordic_circular_gain(const int n) {
 	return x;
 }
 
-/********* CORDIC Routines ***************************************************/
-/********* Power / Logarithms ************************************************/
-
-static int isodd(const unsigned n) {
+static inline int isodd(const unsigned n) {
 	return n & 1;
 }
 
@@ -909,9 +883,6 @@ q_t qacos(const q_t t) {
 	return qatan2(qsqrt(qsub(QINT(1), qmul(t, t))), t);
 }
 
-/********* Power / Logarithms ************************************************/
-/********* Conversion Utilities **********************************************/
-
 q_t qdeg2rad(const q_t deg) {
 	return qdiv(qmul(QPI, deg), QINT(180));
 }
@@ -919,12 +890,6 @@ q_t qdeg2rad(const q_t deg) {
 q_t qrad2deg(const q_t rad) {
 	return qdiv(qmul(QINT(180), rad), QPI);
 }
-
-// long/int/q32.32/q8.8 conversion routines go here, if implemented
-
-/********* Conversion Utilities **********************************************/
-
-/********* Filters ***********************************************************/
 
 void qfilter_init(qfilter_t *f, const q_t time, const q_t rc, const q_t seed) {
 	assert(f);
@@ -962,17 +927,11 @@ q_t qfilter_value(const qfilter_t *f) {
 	return f->filtered;
 }
 
-/********* Filters ***********************************************************/
-
-/********* PID Controller ****************************************************/
-
 /* Must be called at a constant rate; perhaps a PID which takes call time
  * into account could be made, but that would complicate things. Differentiator
- * term needs filtering also. 
- *
- * TODO: Take into account time delta
- * - See
- *   <https://www.quora.com/Do-I-need-to-sample-at-a-constant-rate-for-PID-control-or-is-it-sufficient-to-know-the-time-at-which-my-sample-was-taken-even-if-the-increment-varies>
+ * term needs filtering also. It would be nice to create a version that took
+ * into account the time delta, see
+ * <https://www.quora.com/Do-I-need-to-sample-at-a-constant-rate-for-PID-control-or-is-it-sufficient-to-know-the-time-at-which-my-sample-was-taken-even-if-the-increment-varies>
  * */
 q_t qpid_update(qpid_t *pid, const q_t error, const q_t position) {
 	assert(pid);
@@ -986,11 +945,8 @@ q_t qpid_update(qpid_t *pid, const q_t error, const q_t position) {
 	return qsub(qadd(p, i), d);
 }
 
-/********* PID Controller ****************************************************/
-
-/********* Simpsons method for numerical Integration *************************/
-/* From "Math Toolkit for Real-Time Programming" by Jack Crenshaw */
-
+/* Simpsons method for numerical integration, from "Math Toolkit for 
+ * Real-Time Programming" by Jack Crenshaw */
 q_t qsimpson(q_t (*f)(q_t), const q_t x1, const q_t x2, const unsigned n) {
 	assert(f);
 	assert((n & 1) == 0);
@@ -1004,15 +960,12 @@ q_t qsimpson(q_t (*f)(q_t), const q_t x1, const q_t x2, const unsigned n) {
 	return qdiv(qmul(h, sum), QINT(3));
 }
 
-/********* Simpsons method for numerical Integration *************************/
-/********* Matrix Operations *************************************************/
-/* TODO: Add stuff to meta-data field; whether matrix is all zeros, or an
-identity matrix, whether it contains valid data, etcetera.
-TODO: Allow a compile time option to store and operate on matrices in row or
-column order.
-TODO: Add reduce, factorization, and other matrix operations */
+/* The matrix meta-data field is not used at the moment, but could be
+ * used for things like versioning, determining whether the matrix is
+ * all zeros, or is the identify matrix, whether it contains valid data,
+ * and more. Some common matrix operations are missing, such as factorization */
 
-enum { METADATA, LENGTH, ROW, COLUMN, DATA };
+enum { METADATA, LENGTH, ROW, COLUMN, DATA, };
 
 int qmatrix_is_valid(const q_t *m) {
 	const size_t size = m[LENGTH], row = m[ROW], column = m[COLUMN];
@@ -1097,11 +1050,7 @@ int qmatrix_apply_binary(q_t *r, const q_t *a, const q_t *b, q_t (*func)(q_t, q_
 
 static q_t qfz(q_t a) { UNUSED(a); return QINT(0); }
 static q_t qf1(q_t a) { UNUSED(a); return QINT(1); }
-// static q_t qid(q_t a) { return a; }
 
-/* It will speed things up if you can force the apply functions to
- * be inlined. A smart enough compiler should realize the function
- * pointer is also constant and inline that function as well */
 int qmatrix_zero(q_t *r)    { return qmatrix_apply_unary(r, r, qfz); }
 int qmatrix_one(q_t *r)     { return qmatrix_apply_unary(r, r, qf1); }
 int qmatrix_logical(q_t *r, const q_t *a) { return qmatrix_apply_unary(r, a, qlogical); }
@@ -1335,15 +1284,12 @@ size_t qmatrix_string_length(const q_t *m) {
 	return r;
 }
 
-/********* Matrix Operations *************************************************/
-/********* Sine/Cosine By Another Method *************************************/
 /* See <https://github.com/jamesbowman/sincos> 
  * and "Math Toolkit for Real-Time Programming" by Jack Crenshaw 
  *
  * The naming of these functions ('furman_') is incorrect, they do their
  * computation on numbers represented in Furmans but they do not use a 'Furman
  * algorithm'. As I do not have a better name, the name shall stick. */
-
 static int16_t _sine(const int16_t y) {
 	const int16_t s1 = 0x6487, s3 = -0x2953, s5 = 0x04f8;
 	const int16_t z = arshift((int32_t)y * y, 12);
@@ -1374,11 +1320,10 @@ int16_t furman_cos(int16_t x) {
 	return furman_sin(x + 0x4000);
 }
 
-/********* Sine/Cosine By Another Method *************************************/
-/********* Expression Evaluator **********************************************/
+/* expression evaluator */
 
-enum { ASSOCIATE_NONE, ASSOCIATE_LEFT, ASSOCIATE_RIGHT };
-enum { LEX_NUMBER, LEX_OPERATOR, LEX_END };
+enum { ASSOCIATE_NONE, ASSOCIATE_LEFT, ASSOCIATE_RIGHT, };
+enum { LEX_NUMBER, LEX_OPERATOR, LEX_END, };
 
 int qexpr_init(qexpr_t *e) {
 	assert(e);
@@ -1398,10 +1343,10 @@ static int error(qexpr_t *e, const char *fmt, ...) {
 		return 0;
 	va_list ap;
 	va_start(ap, fmt);
-	const int r = vsnprintf(e->error_string, sizeof (e->error_string), fmt, ap);
+	(void)vsnprintf(e->error_string, sizeof (e->error_string), fmt, ap);
 	va_end(ap);
 	e->error = -1;
-	return r;
+	return -QINT(1);
 }
 
 static q_t numberify(const char *s) {
@@ -1414,37 +1359,29 @@ static q_t numberify(const char *s) {
 static q_t check_div0(qexpr_t *e, q_t a, q_t b) {
 	assert(e);
 	UNUSED(a);
-	if (!b) {
-		error(e, "division by zero");
-		return -QINT(1);
-	}
+	if (!b)
+		return error(e, "division by zero");
 	return QINT(0);
 }
 
 static q_t check_nlz(qexpr_t *e, q_t a) { // Not Less Zero
 	assert(e);
-	if (qless(a, QINT(0))) { 
-		error(e, "negative argument");
-		return -QINT(1);
-	}
+	if (qless(a, QINT(0)))
+		return error(e, "negative argument");
 	return QINT(0);
 }
 
 static q_t check_nlez(qexpr_t *e, q_t a) { // Not Less Equal Zero
 	assert(e);
-	if (qeqless(a, QINT(0))) { 
-		error(e, "negative argument");
-		return -QINT(1);
-	}
+	if (qeqless(a, QINT(0)))
+		return error(e, "negative argument");
 	return QINT(0);
 }
 
 static q_t check_alo(qexpr_t *e, q_t a) {
 	assert(e);
-	if (qmore(qabs(a), QINT(1))) {
-		error(e, "out of range [-1, 1]");
-		return -QINT(1);
-	}
+	if (qmore(qabs(a), QINT(1)))
+		return error(e, "out of range [-1, 1]");
 	return QINT(0);
 }
 
@@ -1794,6 +1731,4 @@ int qexpr(qexpr_t *e, const char *expr) {
 end:
 	return e->error == 0 ? 0 : -1;
 }
-
-/********* Expression Evaluator **********************************************/
 

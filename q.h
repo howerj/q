@@ -1,9 +1,8 @@
-/**@file q.h
- * @brief Q-Number (Q16.16, signed) library
- * @copyright Richard James Howe (2018)
- * @license MIT
- * @email howe.r.j.89@gmail.com
- * @site <https://github.com/howerj/q> */
+/* Project: Q-Number (Q16.16, signed) library
+ * Author:  Richard James Howe
+ * License: The Unlicense
+ * Email:   howe.r.j.89@gmail.com
+ * Repo:    <https://github.com/q> */
 
 #ifndef Q_H
 #define Q_H
@@ -15,12 +14,12 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 
-#define QMAX_ID                  (32)
-#define QMAX_ERROR               (256)
+#define QMAX_ID     (32)
+#define QMAX_ERROR  (256)
 
-#define QBITS  (16)
-#define QMASK  ((1ULL <<  QBITS) - 1ULL)
-#define QHIGH   (1ULL << (QBITS  - 1ULL))
+#define QBITS       (16)
+#define QMASK       ((1ULL <<  QBITS) - 1ULL)
+#define QHIGH       (1ULL << (QBITS  - 1ULL))
 
 #define QMK(QHIGH, LOW, SF) ((ld_t)((((lu_t)QHIGH) << QBITS) | (QMASK & ((((lu_t)LOW) << QBITS) >> (SF)))))
 #define QINT(INT)           ((q_t)((u_t)(INT) << QBITS))
@@ -42,39 +41,39 @@ extern "C" {
 #endif
 #endif
 
-typedef int32_t  q_t; /**< Q Fixed Point Number, (Q16.16, Signed) */
-typedef int64_t ld_t; /**< Double width of Q, signed, for internal calculations, not in Q format */
+typedef int32_t  q_t; /* Q Fixed Point Number, (Q16.16, Signed) */
+typedef int64_t ld_t; /* Double width of Q, signed, for internal calculations, not in Q format */
 typedef int32_t  d_t; /* same width as Q,  signed, but not in Q format */
 typedef uint32_t u_t; /* same width as Q, unsigned, but not in Q format */
 
 typedef PREPACK struct {
-	size_t whole,      /**< number of bits for whole, or integer, part of Q number */
-	       fractional; /**< number of bits for fractional part of Q number */
-	const q_t zero,    /**< the constant '0' */
-	      bit,         /**< smallest 'q' number representable  */
-	      one,         /**< the constant '1' */
-	      pi,          /**< the constant 'pi' */
-	      e,           /**< the constant 'e' */
-	      sqrt2,       /**< the square root of 2 */
-	      sqrt3,       /**< the square root of 3 */
-	      ln2,         /**< the natural logarithm of 2 */
-	      ln10,        /**< the natural logarithm of 10 */
-	      min,         /**< most negative 'q' number */
-	      max;         /**< most positive 'q' number */
+	size_t whole,      /* number of bits for whole, or integer, part of Q number */
+	       fractional; /* number of bits for fractional part of Q number */
+	const q_t zero,    /* the constant '0' */
+	      bit,         /* smallest 'q' number representable  */
+	      one,         /* the constant '1' */
+	      pi,          /* the constant 'pi' */
+	      e,           /* the constant 'e' */
+	      sqrt2,       /* the square root of 2 */
+	      sqrt3,       /* the square root of 3 */
+	      ln2,         /* the natural logarithm of 2 */
+	      ln10,        /* the natural logarithm of 10 */
+	      min,         /* most negative 'q' number */
+	      max;         /* most positive 'q' number */
 } POSTPACK qinfo_t;
 
 typedef PREPACK struct {
-	q_t rc,        /**< time constant */
-	    time,      /**< time of previous measurement */
-	    raw,       /**< previous raw value */
-	    filtered;  /**< filtered value */
-} POSTPACK qfilter_t; /**< High/Low Pass Filter */
+	q_t rc,        /* time constant */
+	    time,      /* time of previous measurement */
+	    raw,       /* previous raw value */
+	    filtered;  /* filtered value */
+} POSTPACK qfilter_t; /* High/Low Pass Filter */
 
 typedef PREPACK struct {
-	q_t d_gain, d_state;               /**< differentiator; gain, state */
-	q_t i_gain, i_state, i_min, i_max; /**< integrator; gain, state, minimum and maximum */
-	q_t p_gain;                        /**< proportional gain */
-} POSTPACK qpid_t; /**< PID Controller <https://en.wikipedia.org/wiki/PID_controller> */
+	q_t d_gain, d_state;               /* differentiator; gain, state */
+	q_t i_gain, i_state, i_min, i_max; /* integrator; gain, state, minimum and maximum */
+	q_t p_gain;                        /* proportional gain */
+} POSTPACK qpid_t; /* PID Controller <https://en.wikipedia.org/wiki/PID_controller> */
 
 struct qexpr;
 typedef struct qexpr qexpr_t;
@@ -90,12 +89,12 @@ typedef PREPACK struct {
 		q_t (*binary) (qexpr_t *e, q_t a1, q_t a2);
 	} check;
 	int precedence, arity, assocativity, hidden;
-} POSTPACK qoperations_t; /**< use in the expression evaluator */
+} POSTPACK qoperations_t; /* use in the expression evaluator */
 
 typedef PREPACK struct {
 	char *name;
 	q_t value;
-} POSTPACK qvariable_t; /**< Variable which can be used with the expression evaluator */
+} POSTPACK qvariable_t; /* Variable which can be used with the expression evaluator */
 
 struct PREPACK qexpr {
 	const qoperations_t **ops, *lpar, *rpar, *negate, *minus;
@@ -111,21 +110,21 @@ struct PREPACK qexpr {
 	size_t vars_max;
 	int error;
 	int initialized;
-} POSTPACK; /**< An expression evaluator for the Q library */
+} POSTPACK; /* An expression evaluator for the Q library */
 
 typedef q_t (*qbounds_t)(ld_t s);
 
-q_t qbound_saturate(ld_t s); /**< default over/underflow behavior, saturation */
-q_t qbound_wrap(ld_t s);     /**< over/underflow behavior, wrap around */
+q_t qbound_saturate(ld_t s); /* default over/underflow behavior, saturation */
+q_t qbound_wrap(ld_t s);     /* over/underflow behavior, wrap around */
 
 typedef PREPACK struct {
-	qbounds_t bound; /**< handles saturation when a number over or underflows */
-	int dp;          /**< decimal points to print, negative specifies maximum precision */
-	unsigned base;   /**< base to use for numeric number conversion */
-} POSTPACK qconf_t; /**< Q format configuration options */
+	qbounds_t bound; /* handles saturation when a number over or underflows */
+	int dp;          /* decimal points to print, negative specifies maximum precision */
+	unsigned base;   /* base to use for numeric number conversion */
+} POSTPACK qconf_t; /* Q format configuration options */
 
-extern const qinfo_t qinfo; /**< information about the format and constants */
-extern qconf_t qconf;       /**< @warning GLOBAL Q configuration options */
+extern const qinfo_t qinfo; /* information about the format and constants */
+extern qconf_t qconf;       /* @warning GLOBAL Q configuration options */
 
 int qtoi(q_t toi);
 q_t qint(int toq);
