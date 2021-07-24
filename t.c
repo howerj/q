@@ -257,24 +257,6 @@ static int eval_file(FILE *input, FILE *output) {
 	return 0;
 }
 
-/*static void polprn(FILE *out) {
-	q_t i = 0, j = 0, mag = 0, theta = 0;
-	for (i = -qint(1); qless(i, qint(2)); i = qadd(i, qint(1)))
-		for (j = -qint(1); qless(j, qint(2)); j = qadd(j, qint(1))) {
-			q_t in = 0, jn = 0;
-			qrec2pol(i, j, &mag, &theta);
-			printq(out, i,     "i");
-			printq(out, j,     "j");
-			printq(out, mag,   "mag");
-			printq(out, qrad2deg(theta), "theta");
-			qpol2rec(mag, theta, &in, &jn);
-			printq(out, in,     "in");
-			printq(out, jn,     "jn");
-
-			fputc('\n', out);
-		}
-}*/
-
 /* --- Unit Test Framework --- */
 
 typedef struct {

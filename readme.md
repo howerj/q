@@ -82,20 +82,6 @@ For the round/ceil/trunc/floor functions the following table from the
 
 Have fun with the adding, and subtracting, and stuff, I hope it goes well.
 
-## To Do
-
-* [ ] Update this To Do section with comments from around the project
-* [ ] Look into, or implement a [BKM][] version for computing elementary functions
-instead of using a [CORDIC][] core. See also:
-  - <https://www-almasty.lip6.fr/~bajard/MesPublis/Spie1999.pdf>
-  - <http://perso.ens-lyon.fr/jean-michel.muller/BKM94.pdf>
-  A hardware implementation for an [FPGA][] in [VHDL][] would also be an interesting
-  project.
-* [ ] Investigate using part of the numbers range to represent NaN (Not A Number),
-  and +/- Infinity, including number conversion to/from those special numbers.
-* [ ] A 64-bit version would be nice, for Q32.32 numbers.
-
-[BKM]: https://en.wikipedia.org/wiki/BKM_algorithm
 [Doom]: https://en.wikipedia.org/wiki/Doom_(1993_video_game)
 [tolower]: http://www.cplusplus.com/reference/cctype/tolower/
 [makefile]: https://en.wikipedia.org/wiki/Make_(software)

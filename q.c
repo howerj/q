@@ -4,19 +4,6 @@
  * Email:   howe.r.j.89@gmail.com
  * Repo:    <https://github.com/q> */
 
-/*
- *  TODO:
- * 	- work out bounds for all functions, especially for CORDIC
- * 	functions
- * 	- Assert inputs are in correct domain, better unit tests, for the
- * 	expression evaluator errors should be returned if the domain is
- * 	incorrect instead.
- * 	- Configuration options for different methods of evaluation
- *	- Clean up API, removing redundant functions, remove global options
- *	and just use saturation. 
- *	- BUG: Too many numbers after decimal place causes number conversion
- *	problems. */
-
 #include "q.h"
 #include <assert.h>
 #include <ctype.h>
@@ -285,7 +272,7 @@ static char itoch(const unsigned ch) {
 	assert(ch < 36);
 	if (ch <= 9)
 		return ch + '0';
-	return ch + 'A';
+	return ch + 'A' - 10;
 }
 
 static inline void swap(char *a, char *b) {
@@ -1144,7 +1131,7 @@ static q_t determine(const q_t *m, const size_t length) {
 		return qsub(qmul(m[0], m[3]), qmul(m[1], m[2]));
 	size_t co1 = 0, co2 = 0;
 	q_t det = QINT(0), sgn = QINT(1);
-	q_t co[length*length]; // TODO: Pass a temporary array to qmatrix_determinant
+	q_t co[length*length]; /* This should really be passed in */
 	for (size_t i = 0; i < length; i++) {
 		for (size_t j = 0; j < length; j++)
 			for (size_t k = 0; k < length; k++)
@@ -1356,6 +1343,14 @@ static q_t numberify(const char *s) {
 	return q;
 }
 
+static q_t qbase(q_t b) {
+	int nb = qtoi(b);
+	if (nb < 2 || nb > 36)
+		return -QINT(1);
+	qconf.base = nb;
+	return b;
+}
+
 static q_t check_div0(qexpr_t *e, q_t a, q_t b) {
 	assert(e);
 	UNUSED(a);
@@ -1416,6 +1411,7 @@ const qoperations_t *qop(const char *op) {
 		{  "asin",      .eval.unary   =  qasin,        .check.unary   =  check_alo,   5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "atan",      .eval.unary   =  qatan,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "atan2",     .eval.binary  =  qatan2,       .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "base",      .eval.unary   =  qbase,        .check.unary   =  NULL,        2,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "c*",        .eval.binary  =  qcordic_mul,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "c/",        .eval.binary  =  qcordic_div,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "ceil",      .eval.unary   =  qceil,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
