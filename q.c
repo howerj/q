@@ -44,6 +44,8 @@ const qinfo_t qinfo = {
 	.sqrt3 = QMK(0x1, 0xBB67, 16), /* 1.BB67 AE85 84... */
 	.ln2   = QMK(0x0, 0xB172, 16), /* 0.B172 17F7 D1... */
 	.ln10  = QMK(0x2, 0x4D76, 16), /* 2.4D76 3776 AA... */
+
+	.version = QVERSION,
 };
 
 qconf_t qconf = { /* Global Configuration Options */

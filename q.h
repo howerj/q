@@ -60,6 +60,7 @@ typedef PREPACK struct {
 	      ln10,        /* the natural logarithm of 10 */
 	      min,         /* most negative 'q' number */
 	      max;         /* most positive 'q' number */
+	const uint32_t version; /* version in X.Y.Z format (Z = lowest 8 bits) */
 } POSTPACK qinfo_t;
 
 typedef PREPACK struct {
@@ -67,7 +68,7 @@ typedef PREPACK struct {
 	    time,      /* time of previous measurement */
 	    raw,       /* previous raw value */
 	    filtered;  /* filtered value */
-} POSTPACK qfilter_t; /* High/Low Pass Filter */
+} POSTPACK qfilter_t;  /* High/Low Pass Filter */
 
 typedef PREPACK struct {
 	q_t d_gain, d_state;               /* differentiator; gain, state */

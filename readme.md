@@ -80,8 +80,12 @@ For the round/ceil/trunc/floor functions the following table from the
 |  -3.8 |  -4.0 |  -4.0 | -3.0 |  -3.0 |
 |  -5.5 |  -6.0 |  -6.0 | -5.0 |  -5.0 |
 
-Have fun with the adding, and subtracting, and stuff, I hope it goes well.
+Have fun with the adding, and subtracting, and stuff, I hope it goes well. It
+would be cool to make an [APL][] interpreter built around this library. Testing
+would become much easier as you could use programming language constructs to
+create new tests over larger ranges of numbers.
 
+[APL]: https://en.wikipedia.org/wiki/APL_(programming_language)
 [Doom]: https://en.wikipedia.org/wiki/Doom_(1993_video_game)
 [tolower]: http://www.cplusplus.com/reference/cctype/tolower/
 [makefile]: https://en.wikipedia.org/wiki/Make_(software)
