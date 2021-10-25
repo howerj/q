@@ -36,7 +36,7 @@ qexpr_t *expr_new(size_t max) {
 	qexpr_t *e = calloc(sizeof(*e), 1);
 	if (!e)
 		goto fail;
-	e->ops     = calloc(sizeof(**e->ops), max);
+	e->ops     = calloc(sizeof(*e->ops), max);
 	e->numbers = calloc(sizeof(*(e->numbers)), max);
 	if (!(e->ops) || !(e->numbers))
 		goto fail;
@@ -87,7 +87,7 @@ static qvariable_t *variable_add(qexpr_t *e, const char *name, q_t value) {
 	if (!variable_name_is_valid(name))
 		return NULL;
 	char *s = estrdup(name);
-	vs = realloc(e->vars, (e->vars_max + 1) * sizeof(*v));
+	vs = realloc(e->vars, (e->vars_max + 1) * sizeof(*vs));
 	v = calloc(1, sizeof(*v));
 	if (!vs || !v || !s)
 		goto fail;
@@ -100,6 +100,8 @@ fail:
 	free(v);
 	free(s);
 	free(vs);
+	if (vs != e->vars)
+		free(e->vars);
 	return NULL;
 }
 

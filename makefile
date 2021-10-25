@@ -1,4 +1,4 @@
-QVERSION=0x000900
+QVERSION=0x000901
 CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic -fwrapv -DQVERSION=${QVERSION}
 CC=gcc
 TARGET=q
