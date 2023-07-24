@@ -1,4 +1,4 @@
-QVERSION=0x000901
+QVERSION=0x000902
 CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic -fwrapv -DQVERSION=${QVERSION}
 CC=gcc
 TARGET=q
@@ -31,4 +31,4 @@ ${TARGET}: lib${TARGET}.a t.o
 expr: lib${TARGET}.a expr.o
 
 clean:
-	${RM} ${TARGET} expr *.a *.o
+	git clean -dffx

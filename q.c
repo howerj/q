@@ -2,7 +2,19 @@
  * Author:  Richard James Howe
  * License: The Unlicense
  * Email:   howe.r.j.89@gmail.com
- * Repo:    <https://github.com/q> */
+ * Repo:    <https://github.com/q> 
+ *
+ *
+ * A Q32.32 version would be useful. 
+ *
+ * The following should be changed/done for this library:
+ *
+ * - Moving towards a header-only model.
+ * - Removal of dependencies such as 'isalpha', 'tolower'
+ *   as they are locale dependent.
+ * - Make component optional. 
+ * - Fix bugs / inaccuracies in CORDIC code.
+ * - Generally improve accuracy of all the functions. */
 
 #include "q.h"
 #include <assert.h>
@@ -93,8 +105,7 @@ q_t qbound_wrap(const ld_t s) { /**< wrap numbers on overflow */
 
 static inline q_t qsat(const ld_t s) {
 	static_assertions();
-	if (s > DMAX) return qconf.bound(s);
-	if (s < DMIN) return qconf.bound(s);
+	if (s > DMAX || s < DMIN) return qconf.bound(s);
 	return s;
 }
 
@@ -115,6 +126,7 @@ inline d_t divn(const d_t v, const unsigned p) {
 	return leading | shifted;
 }
 
+/* These really all should be moved the header for efficiency reasons */
 static inline u_t qhigh(const q_t q) { return ((u_t)q) >> QBITS; }
 static inline u_t qlow(const q_t q)  { return ((u_t)q) & QMASK; }
 static inline q_t qcons(const u_t hi, const u_t lo) { return (hi << QBITS) | (lo & QMASK); }
@@ -131,8 +143,8 @@ long long qtoll(const q_t q)            { return qtoi(q); }
 q_t qvlong(long long ll)                { return qint(ll); }
 
 q_t qisnegative(const q_t a)            { return QINT(BOOLIFY(qhigh(a) & QHIGH)); }
-q_t qispositive(const q_t a)            { return QINT( !(qhigh(a) & QHIGH)); }
-q_t qisinteger(const q_t a)             { return QINT( !qlow(a)); }
+q_t qispositive(const q_t a)            { return QINT(!(qhigh(a) & QHIGH)); }
+q_t qisinteger(const q_t a)             { return QINT(!qlow(a)); }
 q_t qisodd(const q_t a)                 { return QINT(qisinteger(a) &&  (qhigh(a) & 1)); }
 q_t qiseven(const q_t a)                { return QINT(qisinteger(a) && !(qhigh(a) & 1)); }
 q_t qless(const q_t a, const q_t b)     { return QINT(a < b); }
@@ -241,7 +253,7 @@ int qunpack(q_t *q, const char *buffer, const size_t length) {
 
 static inline ld_t multiply(const q_t a, const q_t b) {
 	const ld_t dd = ((ld_t)a * (ld_t)b) + (lu_t)QHIGH;
-	/* NB. portable version of "dd >> QBITS", for double width signed values */
+	/* N.B. portable version of "dd >> QBITS", for double width signed values */
 	return dd < 0 ? (-1ull << (2 * QBITS)) | ((lu_t)dd >> QBITS) : ((lu_t)dd) >> QBITS;
 }
 
@@ -259,6 +271,8 @@ q_t qdiv(const q_t a, const q_t b) {
 	ld_t bd2 = divn(b, 1);
 	if (!((dd >= 0 && b > 0) || (dd < 0 && b < 0)))
 		bd2 = -bd2;
+	/* Overflow not checked! */
+	/*return (dd/b) + (bd2/b);*/
 	return (dd + bd2) / b;
 }
 
@@ -324,6 +338,7 @@ int qsprintb(q_t p, char *s, size_t length, const u_t base) {
 		if (idp >= 0 && (int)i >= idp)
 			break;
 		lo *= base;
+		assert(i < (QBITS + 2));
 		frac[i] = itoch(lo >> QBITS);
 		lo &= QMASK;
 	}
@@ -442,8 +457,14 @@ typedef enum {
 	CORDIC_COORD_CIRCULAR_E   =  1,
 } cordic_coordinates_e;
 
-static const d_t cordic_circular_scaling   = 0x9B74; /* 1/scaling-factor */
-static const d_t cordic_hyperbolic_scaling = 0x13520; /* 1/scaling-factor */
+static const d_t cordic_circular_inverse_scaling   = 0x9B74; /* 1/scaling-factor */
+static const d_t cordic_hyperbolic_inverse_scaling = 0x13520; /* 1/scaling-factor */
+
+static int mulsign(d_t a, d_t b) { /* sign(a*b) */
+	const int aneg = a < 0;
+	const int bneg = b < 0;
+	return aneg ^ bneg ? -QINT(1) : QINT(1);
+}
 
 /* Universal CORDIC <https://en.wikibooks.org/wiki/Digital_Circuits/CORDIC>
  *
@@ -541,8 +562,8 @@ static int cordic(const cordic_coordinates_e coord, const cordic_mode_e mode, in
 	for (; j < (unsigned)iterations; i++, j++) {
 		again:
 		{
-			const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -y /*-(qmul(y,x))*/;
-			const d_t  d =   -!!(m /*<=*/ < 0);
+			const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -mulsign(x, y);
+			const d_t  d =   -!!(m < 0);
 			const d_t xs = ((((shiftx ? divn(y, *shiftx) : 0)) ^ d) - d);
 			const d_t ys =             (divn(x, *shifty)       ^ d) - d;
 			const d_t xn = x - (hyperbolic ? -xs : xs);
@@ -577,7 +598,11 @@ static int qcordic(q_t theta, const int iterations, q_t *sine, q_t *cosine) {
 	static const q_t  qpi =   QPI/4, qnpi = -(QPI/4);
 	static const q_t  dpi =   QPI*2, dnpi = -(QPI*2);
 
-	/* convert to range -pi   to pi */
+	/* Convert to range -pi   to pi, we could use qmod,
+	 * however that uses multiplication and division, and
+	 * if we can use those operators freely then there are
+	 * other, better algorithms we can use instead of CORDIC
+	 * for sine/cosine calculation. */
 	while (qless(theta, npi)) theta = qadd(theta,  dpi);
 	while (qmore(theta,  pi)) theta = qadd(theta, dnpi);
 
@@ -601,7 +626,7 @@ static int qcordic(q_t theta, const int iterations, q_t *sine, q_t *cosine) {
 		shift =  1;
 	}
 
-	d_t x = cordic_circular_scaling, y = 0, z = theta /* no theta scaling needed */;
+	d_t x = cordic_circular_inverse_scaling, y = 0, z = theta /* no theta scaling needed */;
 
 	/* CORDIC in Q2.16 format */
 	if (cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_ROTATE_E, iterations, &x, &y, &z) < 0)
@@ -698,7 +723,7 @@ q_t qcordic_div(const q_t a, const q_t b) {
 void qsincosh(const q_t a, q_t *sinh, q_t *cosh) {
 	assert(sinh);
 	assert(cosh);
-	q_t x = cordic_hyperbolic_scaling, y = QINT(0), z = a; // (e^2x - 1) / (e^2x + 1)
+	q_t x = cordic_hyperbolic_inverse_scaling, y = QINT(0), z = a; // (e^2x - 1) / (e^2x + 1)
 	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	*sinh = y;
@@ -744,14 +769,14 @@ q_t qcordic_sqrt(const q_t n) {  /* testing only; works for 0 < x < 2 */
 	    z = 0;
 	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
-	return qmul(x, cordic_hyperbolic_scaling);
+	return qmul(x, cordic_hyperbolic_inverse_scaling);
 }
 
 q_t qhypot(const q_t a, const q_t b) {
 	q_t x = qabs(a), y = qabs(b), z = QINT(0); /* abs() should not be needed? */
 	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
-	return qmul((x), cordic_circular_scaling);
+	return qmul(x, cordic_circular_inverse_scaling);
 }
 
 void qpol2rec(const q_t magnitude, const q_t theta, q_t *i, q_t *j) {
@@ -770,7 +795,7 @@ void qrec2pol(const q_t i, const q_t j, q_t *magnitude, q_t *theta) {
 	q_t x = qabs(i), y = qabs(j), z = QINT(0);
 	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
-	*magnitude = qmul((x), cordic_circular_scaling);
+	*magnitude = qmul(x, cordic_circular_inverse_scaling);
 	if (is && js)
 		z = qadd(z, QPI);
 	else if (js)
@@ -823,7 +848,7 @@ q_t qlog(q_t x) {
 	q_t logs = 0;
 	assert(qmore(x, 0));
 	static const q_t lmax = QMK(9, 0x8000, 16); /* 9.5, lower limit needs checking */
-	for(; qmore(x, lmax); x = divn(x, 1))
+	for (; qmore(x, lmax); x = divn(x, 1))
 		logs = qadd(logs, qinfo.ln2);
 	return qadd(logs, qcordic_ln(x));
 }
@@ -849,7 +874,7 @@ q_t qpow(q_t n, q_t exp) {
 	return qexp(multiply(qlog(n), exp));
 }
 
-q_t qsqrt(const q_t x) { /* Newton Rhaphson method */
+q_t qsqrt(const q_t x) { /* Newton-Rhaphson method */
 	assert(qeqmore(x, 0));
 	const q_t difference = qmore(x, QINT(100)) ? 0x0100 : 0x0010;
 	if (qequal(QINT(0), x))
@@ -882,9 +907,10 @@ q_t qrad2deg(const q_t rad) {
 
 void qfilter_init(qfilter_t *f, const q_t time, const q_t rc, const q_t seed) {
 	assert(f);
+	memset(f, 0, sizeof(*f));
 	f->time = time;
 	f->rc = rc;
-	f->filtered = seed; // alpha * seed for LPF
+	f->filtered = seed; /* alpha * seed for LPF */
 	f->raw = seed;
 }
 
@@ -941,7 +967,7 @@ q_t qsimpson(q_t (*f)(q_t), const q_t x1, const q_t x2, const unsigned n) {
 	assert((n & 1) == 0);
 	const q_t h = qdiv(qsub(x2, x1), QINT(n));
 	q_t sum = 0, x = x1;
-	for(unsigned i = 0; i < (n / 2u); i++){
+	for (unsigned i = 0; i < (n / 2u); i++){
 		sum = qadd(sum, qadd(f(x), qmul(QINT(2), f(qadd(x,h)))));
 		x   = qadd(x, qmul(QINT(2), h));
 	}
@@ -952,7 +978,9 @@ q_t qsimpson(q_t (*f)(q_t), const q_t x1, const q_t x2, const unsigned n) {
 /* The matrix meta-data field is not used at the moment, but could be
  * used for things like versioning, determining whether the matrix is
  * all zeros, or is the identify matrix, whether it contains valid data,
- * and more. Some common matrix operations are missing, such as factorization */
+ * and more. Some common matrix operations are missing, such as factorization 
+ *
+ * A function for image kernels might be useful. */
 
 enum { METADATA, LENGTH, ROW, COLUMN, DATA, };
 
@@ -1197,7 +1225,7 @@ int qmatrix_mul(q_t *r, const q_t *a, const q_t *b) {
 	for (size_t i = 0; i < arows; i++)
 		for (size_t j = 0; j < bcolumns; j++) {
 			q_t s = QINT(0);
-			for(size_t k = 0; k < brows; k++)
+			for (size_t k = 0; k < brows; k++)
 				s = qadd(s, qmul(ma[i*acolumns + k], mb[k*bcolumns + j]));
 			mr[i*arows + j] = s;
 		}
@@ -1386,6 +1414,7 @@ const qoperations_t *qop(const char *op) {
 	assert(op);
 	static const qoperations_t ops[] = {
 		/* Binary Search Table: Use 'LC_ALL="C" sort -k 2 < table' to sort this */
+		/* name         function                       check function        precedence arity left/right-assoc hidden */     
 		{  "!",         .eval.unary   =  qnot,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "!=",        .eval.binary  =  qunequal,     .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
 		{  "%",         .eval.binary  =  qrem,/*!*/    .check.binary  =  check_div0,  3,  2,  ASSOCIATE_LEFT,   0,  },
@@ -1666,7 +1695,7 @@ static int lex(qexpr_t *e, const char **expr) {
 			r = -1;
 		}
 	}
-	//printf("id(%d) %d => %s\n", (int)(s - *expr), r, e->id);
+	/*printf("id(%d) %d => %s\n", (int)(s - *expr), r, e->id);*/
 	*expr = s;
 	return r;
 }
@@ -1700,7 +1729,7 @@ int qexpr(qexpr_t *e, const char *expr) {
 				if (e->op == e->minus) {
 					op = e->negate;
 				} else if (e->op->arity == 1) {
-					// Do nothing
+					/* do nothing */
 				} else if (e->op != e->lpar) {
 					assert(e->op);
 					error(e, "invalid use of \"%s\"", e->op->name);

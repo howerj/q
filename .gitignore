@@ -1,7 +1,10 @@
 *.a
 *.csv
+*.dll
+*.exe
 *.log
 *.o
-q
+*.so
 *.txt
 expr
+q

@@ -15,10 +15,10 @@
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 #define DEFAULT_STACK_SIZE      (64)
 
-enum { ASSOCIATE_NONE, ASSOCIATE_LEFT, ASSOCIATE_RIGHT };
-enum { LEX_NUMBER, LEX_OPERATOR, LEX_END };
+enum { ASSOCIATE_NONE, ASSOCIATE_LEFT, ASSOCIATE_RIGHT, };
+enum { LEX_NUMBER, LEX_OPERATOR, LEX_END, };
 
-void expr_delete(qexpr_t *e) {
+static void expr_delete(qexpr_t *e) {
 	if (!e)
 		return;
 	free(e->ops);
@@ -31,7 +31,7 @@ void expr_delete(qexpr_t *e) {
 	free(e);
 }
 
-qexpr_t *expr_new(size_t max) {
+static qexpr_t *expr_new(size_t max) {
 	max = max ? max : 64;
 	qexpr_t *e = calloc(sizeof(*e), 1);
 	if (!e)
@@ -140,13 +140,14 @@ static inline int tests(FILE *out) {
 		{   0,  QINT( 0),   "1---1",      },
 	};
 
-	fputs("Running Built In Self Tests:\n", out);
+	if (fputs("Running Built In Self Tests:\n", out) < 0)
+		report = -1;
 	const size_t length = sizeof (tests) / sizeof (tests[0]);
 	for (size_t i = 0; i < length; i++) {
 		qexpr_t *e = expr_new(64);
 		const struct test *test = &tests[i];
 		if (!e) {
-			fprintf(out, "test failed (unable to allocate)\n");
+			(void)fprintf(out, "test failed (unable to allocate)\n");
 			report = -1;
 			goto end;
 		}
@@ -155,7 +156,7 @@ static inline int tests(FILE *out) {
 		qvariable_t *v2 = variable_add(e, "b",  QINT(4));
 		qvariable_t *v3 = variable_add(e, "c", -QINT(5));
 		if (!v1 || !v2 || !v3) {
-			fprintf(out, "test failed (unable to assign variable)\n");
+			(void)fprintf(out, "test failed (unable to assign variable)\n");
 			report = -1;
 			goto end;
 		}
@@ -163,17 +164,19 @@ static inline int tests(FILE *out) {
 		const int r = qexpr(e, test->expr);
 		const q_t tos = e->numbers[0];
 		const int pass = (r == test->r) && (r != 0 || tos == test->result);
-		fprintf(out, "%s: r(%2d), eval(\"%s\") = %lg \n",
-				pass ? "   ok" : " FAIL", r, test->expr, (double)tos);
-		if (!pass) {
+		if (fprintf(out, "%s: r(%2d), eval(\"%s\") = %lg \n",
+				pass ? "   ok" : " FAIL", r, test->expr, (double)tos) < 0)
 			report = -1;
-			fprintf(out, "\tExpected: r(%2d), %lg\n",
+		if (!pass) {
+			(void)fprintf(out, "\tExpected: r(%2d), %lg\n",
 				test->r, (double)(test->result));
+			report = -1;
 		}
 		expr_delete(e);
 	}
 end:
-	fprintf(out, "Tests Complete: %s\n", report == 0 ? "pass" : "FAIL");
+	if (fprintf(out, "Tests Complete: %s\n", report == 0 ? "pass" : "FAIL") < 0)
+		report = -1;
 	return report;
 }
 
@@ -188,18 +191,21 @@ int main(int argc, char *argv[]) {
 	qexpr_t *e = expr_new(0);
 
 	if (!e) {
-		fprintf(stderr, "allocate failed\n");
+		(void)fprintf(stderr, "allocate failed\n");
 		r = 1;
 		goto end;
 	}
 
 	if (argc == 1) {
-		usage(stderr, argv[0]);
+		if (usage(stderr, argv[0]) < 0) {
+			r = 1;
+			goto end;
+		}
 		return tests(stderr);
 	}
 
 	if (argc < 2) {
-		fprintf(stderr, "usage: %s expr\n", argv[0]);
+		(void)fprintf(stderr, "usage: %s expr\n", argv[0]);
 		r = 1;
 		goto end;
 	}
@@ -207,11 +213,13 @@ int main(int argc, char *argv[]) {
 	if (qexpr(e, argv[1]) == 0) {
 		char n[64] = { 0 };
 		qsprint(e->numbers[0], n, sizeof n);
-		printf("%s\n", n);
+		if (printf("%s\n", n) < 0)
+			r = 1;
 		r = 0;
 		goto end;
 	} else {
-		fprintf(stderr, "error: %s\n", e->error_string);
+		(void)fprintf(stderr, "error: %s\n", e->error_string);
+		r = 1;
 	}
 end:
 	expr_delete(e);

@@ -21,6 +21,9 @@ the code to ported to the platform of your choice. The 'run' make target builds
 the test program (called 'q') and runs it on some input. The '-h' option will
 spit out a more detailed help.
 
+I would compile the library with the '-fwrapv' option enabled, you might
+be some kind of Maverick who doesn't play by no rules however.
+
 The trigonometric functions, and some others, are implemented internally with
 [CORDIC][].
 
