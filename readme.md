@@ -49,13 +49,16 @@ not exactly paying for this library now, are you? Caveat Auditor perhaps).
 | qcos(theta)   | cos(theta)  |             |          | Cosine                                          |
 | qtan(theta)   | tan(theta)  |             |          | Tangent                                         |
 | qcot(theta)   | cot(theta)  |             |          | Cotangent                                       |
+| qhypot(a, b)  | hypot(a, b) |             |          | Hypotenuse; sqrt(a\*a + b\*b)                   |
 | qasin(x)      | asin(x)     | abs(x) <= 1 | Yes      | Arcsine                                         |
 | qacos(x)      | acos(x)     | abs(x) <= 1 | Yes      | Arccosine                                       |
-| qhypot(a, b)  | hypot(a, b) |             |          | Hypotenuse; sqrt(a\*a + b\*b)                   |
 | qatan(t)      | atan(t)     |             |          | Arctangent                                      |
 | qsinh(a)      | sinh(a)     |             |          | Hyperbolic Sine                                 |
 | qcosh(a)      | cosh(a)     |             |          | Hyperbolic Cosine                               |
 | qtanh(a)      | tanh(a)     |             |          | Hyperbolic Tangent                              |
+| qasinh(a)     | asinh(a)    |             |          | Inverse Hyperbolic Sine                         |
+| qacosh(a)     | acosh(a)    |             |          | Inverse Hyperbolic Cosine                       |
+| qatanh(a)     | atanh(a)    |             |          | Inverse Hyperbolic Tangent                      |
 | qexp(e)       | exp(e)      | e < ln(MAX) | No       | Exponential function, High error for 'e' > ~7.  |
 | qlog(n)       | log(n)      | n >  0      | Yes      | Natural Logarithm                               |
 | qsqrt(x)      | sqrt(x)     | n >= 0      | Yes      | Square Root                                     |

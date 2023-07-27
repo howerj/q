@@ -22,73 +22,89 @@
 
 static int qprint(FILE *out, const q_t p) {
 	assert(out);
-	char buf[64+1] = { 0 };
+	char buf[64 + 1] = { 0, };
 	const int r = qsprint(p, buf, sizeof buf);
 	return r < 0 ? r : fprintf(out, "%s", buf);
 }
 
-static void printq(FILE *out, q_t q, const char *msg) {
+static int printq(FILE *out, q_t q, const char *msg) {
 	assert(out);
 	assert(msg);
-	fprintf(out, "%s = ", msg);
-	qprint(out, q);
-	fputc('\n', out);
+	if (fprintf(out, "%s = ", msg) < 0)
+		return -1;
+	if (qprint(out, q) < 0)
+		return -1;
+	if (fputc('\n', out) != '\n')
+		return -1;
+	return 0;
 }
 
-static void print_sincos(FILE *out, const q_t theta) {
+static int print_sincos(FILE *out, const q_t theta) {
 	assert(out);
 	q_t sine  = qinfo.zero, cosine = qinfo.zero;
 	qsincos(theta, &sine, &cosine);
-	qprint(out, theta);
-	fputc(',', out);
-	qprint(out, sine);
-	fputc(',', out);
-	qprint(out, cosine);
-	fputc('\n', out);
+	if (qprint(out, theta) < 0)
+		return -1;
+	if (fputc(',', out) != ',')
+		return -1;
+	if (qprint(out, sine) < 0)
+		return -1;
+	if (fputc(',', out) != ',')
+		return -1;
+	if (qprint(out, cosine) < 0)
+		return -1;
+	if (fputc('\n', out) != '\n')
+		return -1;
+	return 0;
 }
 
-static void print_sincos_table(FILE *out) {
+static int print_sincos_table(FILE *out) {
 	assert(out);
 	const q_t tpi   = qdiv(qinfo.pi, qint(20));
 	const q_t end   = qmul(qinfo.pi, qint(2));
 	const q_t start = qnegate(end);
-	fprintf(out, "theta,sine,cosine\n");
+	if (fprintf(out, "theta,sine,cosine\n") < 0)
+		return -1;
 	for (q_t i = start; qless(i, end); i = qadd(i, tpi))
-		print_sincos(out, i);
+		if (print_sincos(out, i) < 0)
+			return -1;
+	return 0;
 }
 
-static void qinfo_print(FILE *out, const qinfo_t *qi) {
+static int qinfo_print(FILE *out, const qinfo_t *qi) {
 	assert(out);
 	assert(qi);
-	fprintf(out, "Q%u.%u Info\n", (unsigned)qi->whole, (unsigned)qi->fractional);
-	printq(out, qi->bit,   "bit");
-	printq(out, qi->one,   "one");
-	printq(out, qi->zero,  "zero");
-	printq(out, qi->pi,    "pi");
-	printq(out, qi->e,     "e");
-	printq(out, qi->sqrt2, "sqrt2");
-	printq(out, qi->sqrt3, "sqrt3");
-	printq(out, qi->ln2,   "ln2");
-	printq(out, qi->ln10,  "ln10");
-	printq(out, qi->min,   "min");
-	printq(out, qi->max,   "max");
-	printq(out, qcordic_circular_gain(-1),   "circular-gain");
-	printq(out, qcordic_hyperbolic_gain(-1), "hyperbolic-gain");
+	if (fprintf(out, "Q%u.%u Info\n", (unsigned)qi->whole, (unsigned)qi->fractional) < 0) return -1;
+	if (printq(out, qi->bit,   "bit") < 0) return -1;
+	if (printq(out, qi->one,   "one") < 0) return -1;
+	if (printq(out, qi->zero,  "zero") < 0) return -1;
+	if (printq(out, qi->pi,    "pi") < 0) return -1;
+	if (printq(out, qi->e,     "e") < 0) return -1;
+	if (printq(out, qi->sqrt2, "sqrt2") < 0) return -1;
+	if (printq(out, qi->sqrt3, "sqrt3") < 0) return -1;
+	if (printq(out, qi->ln2,   "ln2") < 0) return -1;
+	if (printq(out, qi->ln10,  "ln10") < 0) return -1;
+	if (printq(out, qi->min,   "min") < 0) return -1;
+	if (printq(out, qi->max,   "max") < 0) return -1;
+	if (printq(out, qcordic_circular_gain(-1),   "circular-gain") < 0) return -1;
+	if (printq(out, qcordic_hyperbolic_gain(-1), "hyperbolic-gain") < 0) return -1;
+	return 0;
 }
 
-static void qconf_print(FILE *out, const qconf_t *qc) {
+static int qconf_print(FILE *out, const qconf_t *qc) {
 	assert(out);
 	assert(qc);
-	fprintf(out, "Q Configuration\n");
+	if (fprintf(out, "Q Configuration\n") < 0) return -1;
 	const char *bounds = "unknown";
 	qbounds_t bound = qc->bound;
 	if (bound == qbound_saturate)
 		bounds = "saturate";
 	if (bound == qbound_wrap)
 		bounds = "wrap";
-	fprintf(out, "overflow handler: %s\n", bounds);
-	fprintf(out, "input/output radix: %u (0 = special case)\n", qc->base);
-	fprintf(out, "decimal places: %d\n", qc->dp);
+	if (fprintf(out, "overflow handler: %s\n", bounds) < 0) return -1;
+	if (fprintf(out, "input/output radix: %u (0 = special case)\n", qc->base) < 0) return -1;
+	if (fprintf(out, "decimal places: %d\n", qc->dp) < 0) return -1;
+	return 0;
 }
 
 static FILE *fopen_or_die(const char *file, const char *mode) {
@@ -96,7 +112,7 @@ static FILE *fopen_or_die(const char *file, const char *mode) {
 	FILE *h = NULL;
 	errno = 0;
 	if (!(h = fopen(file, mode))) {
-		fprintf(stderr, "file open \"%s\" (mode %s) failed: %s\n", file, mode, strerror(errno));
+		(void)fprintf(stderr, "file open \"%s\" (mode %s) failed: %s\n", file, mode, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 	return h;
@@ -234,6 +250,7 @@ static int eval_file(FILE *input, FILE *output) {
 	assert(input);
 	assert(output);
 	char line[256] = { 0 };
+	int rv = 0;
 	while (fgets(line, sizeof(line) - 1, input)) {
 		q_t result = 0;
 		const int r = eval(line, &result);
@@ -242,19 +259,19 @@ static int eval_file(FILE *input, FILE *output) {
 		if (r < 0) {
 			const char *msg = eval_error(-r);
 			trim(line);
-			fprintf(output, "error: eval(\"%s\") = %d: %s\n", line, r, msg);
-			fprintf(output, "\tresult = ");
-			qprint(output, result);
-			fputc('\n', output);
-			return -1;
+			if (fprintf(output, "error: %s = ", line) < 0) return -1;
+			if (qprint(output, result) < 0) return -1;
+			if (fprintf(output, " : %s/%d\n", msg, r) < 0) return -1;
+			rv = -1;
+			continue;
 		}
 		trim(line);
-		char rstring[64+1] = { 0 };
-		qsprint(result, rstring, sizeof(rstring) - 1);
-		fprintf(output, "ok: %s | (%s)\n", line, rstring);
+		char rstring[64 + 1] = { 0, };
+		if (qsprint(result, rstring, sizeof(rstring) - 1) < 0) return -1;
+		if (fprintf(output, "ok: %s | (%s)\n", line, rstring) < 0) return -1;
 		memset(line, 0, sizeof line);
 	}
-	return 0;
+	return rv;
 }
 
 /* --- Unit Test Framework --- */
@@ -274,7 +291,8 @@ static inline unit_test_t _unit_test_start(const char *file, const char *func, u
 
 static inline void _unit_test_statement(const char *expr_str) {
 	assert(expr_str);
-	fprintf(stdout, "   STATE: %s\n", expr_str);
+	if (fprintf(stdout, "   STATE: %s\n", expr_str) < 0)
+		abort();
 }
 
 static inline void _unit_test(unit_test_t *t, int failed, const char *expr_str, const char *file, const char *func, unsigned line, int die) {
@@ -282,9 +300,9 @@ static inline void _unit_test(unit_test_t *t, int failed, const char *expr_str, 
 	assert(expr_str);
 	assert(file);
 	assert(func);
-	if(failed) {
+	if (failed) {
 		fprintf(stdout, "  FAILED: %s (%s:%s:%u)\n", expr_str, file, func, line);
-		if(die) {
+		if (die) {
 			fputs("VERIFY FAILED - EXITING\n", stdout);
 			exit(EXIT_FAILURE);
 		}
@@ -298,15 +316,16 @@ static inline void _unit_test(unit_test_t *t, int failed, const char *expr_str, 
 static inline int unit_test_finish(unit_test_t *t) {
 	assert(t);
 	fprintf(stdout, "Tests passed/total: %u/%u\n", t->passed, t->run);
-	if(t->run != t->passed) {
-		fputs("[FAILED]\n", stdout);
+	if (t->run != t->passed) {
+		(void)fputs("[FAILED]\n", stdout);
 		return -1;
 	}
-	fputs("[SUCCESS]\n", stdout);
+	if (fputs("[SUCCESS]\n", stdout) < 0)
+		return -1;
 	return 0;
 }
 
-#define unit_test_statement(T, EXPR) do { (void)(T); EXPR; _unit_test_statement(( #EXPR)); } while(0)
+#define unit_test_statement(T, EXPR) do { (void)(T); EXPR; _unit_test_statement(( #EXPR)); } while (0)
 #define unit_test_start()         _unit_test_start(__FILE__, __func__, __LINE__)
 #define unit_test(T, EXPR)        _unit_test((T), 0 == (EXPR), (# EXPR), __FILE__, __func__, __LINE__, 0)
 #define unit_test_verify(T, EXPR) _unit_test((T), 0 == (EXPR), (# EXPR), __FILE__, __func__, __LINE__, 1)
@@ -364,14 +383,14 @@ static inline int test_filter(void) {
 	qfilter_init(&lpf, qint(0), beta, qint(0));
 	qfilter_init(&hpf, qint(0), beta, qint(0));
 	for (int i = 0; i < 100; i++) {
-		char low[64+1] = { 0 }, high[64+1] = { 0 };
+		char low[64 + 1] = { 0, }, high[64 + 1] = { 0, };
 		const q_t step = qdiv(qint(i), qint(100));
 		const q_t input = qint(1);
 		qfilter_low_pass(&lpf, step, input);
 		qfilter_high_pass(&hpf, step, input);
-		qsprint(qfilter_value(&lpf),  low, sizeof(low)  - 1ull);
-		qsprint(qfilter_value(&hpf), high, sizeof(high) - 1ull);
-		fprintf(stdout, "%2d: %s\t%s\n", i, low, high);
+		if (qsprint(qfilter_value(&lpf),  low, sizeof(low)  - 1ull) < 0) return -1;
+		if (qsprint(qfilter_value(&hpf), high, sizeof(high) - 1ull) < 0) return -1;
+		if (fprintf(stdout, "%2d: %s\t%s\n", i, low, high) < 0) return -1;
 	}
 	return unit_test_finish(&t);
 }
@@ -398,21 +417,21 @@ static int test_matrix(void) {
 	unit_test_t t = unit_test_start();
 	FILE *out = stdout;
 	q_t a[] = QMATRIX(2, 3, 
-			QINT(1), QINT(2), QINT(3), 
-			QINT(4), QINT(5), QINT(6)
+		QINT(1), QINT(2), QINT(3), 
+		QINT(4), QINT(5), QINT(6),
 	);
 	q_t b[] = QMATRIX(3, 2, 
-			QINT(2), QINT(3), 
-			QINT(4), QINT(5), 
-			QINT(6), QINT(7)
+		QINT(2), QINT(3), 
+		QINT(4), QINT(5), 
+		QINT(6), QINT(7),
 	);
 	const q_t abr[] = QMATRIX(2, 2,
-			QINT(28), QINT(34),
-			QINT(64), QINT(79)
+		QINT(28), QINT(34),
+		QINT(64), QINT(79),
 	);
 	const q_t abrp[] = QMATRIX(2, 2,
-			QINT(28), QINT(64),
-			QINT(34), QINT(79)
+		QINT(28), QINT(64),
+		QINT(34), QINT(79),
 	);
 	q_t ab[QMATRIXSZ(2, 2)]   = QMATRIXZ(2, 2);
 	q_t abp[QMATRIXSZ(2, 2)]  = QMATRIXZ(2, 2);
@@ -430,12 +449,12 @@ static int test_matrix(void) {
 static int test_matrix_trace(void) {
 	unit_test_t t = unit_test_start();
 	q_t a[] = QMATRIX(2, 2,
-			QINT(1), QINT(2), 
-			QINT(4), QINT(5), 
+		QINT(1), QINT(2), 
+		QINT(4), QINT(5), 
 	);
 	q_t b[] = QMATRIX(2, 2,
-			QINT(2), QINT(3), 
-			QINT(4), QINT(5), 
+		QINT(2), QINT(3), 
+		QINT(4), QINT(5), 
 	);
 	q_t ta[sizeof(a) / sizeof(a[0])] = QMATRIX(2, 2, 0);
 	q_t tb[sizeof(b) / sizeof(b[0])] = QMATRIX(2, 2, 0);
@@ -483,7 +502,7 @@ static int internal_tests(void) {
 	return 0;
 }
 
-static void help(FILE *out, const char *arg0) {
+static int help(FILE *out, const char *arg0) {
 	assert(out);
 	assert(arg0);
 	const char *h = "\n\
@@ -517,15 +536,17 @@ numbers of the form '-12.45'. 'expected' is the expected result,\n\
 'allowance' the +/- amount the result is allowed to deviated by, and\n\
 'arg1' and 'arg2' the operator arguments.\n\
 \n\n";
-	fprintf(out, "usage: %s -h -s -i -v -t -c file\n", arg0);
-	fputs(h, out);
+	if (fprintf(out, "usage: %s -h -s -i -v -t -c file\n", arg0) < 0) return -1;
+	if (fputs(h, out) < 0) return -1;
+	return 0;
 }
 
 int main(int argc, char **argv) {
 	bool ran = false;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp("-h", argv[i])) {
-			help(stdout, argv[0]);
+			if (help(stdout, argv[0]) < 0)
+				return 1;
 			return 0;
 		} else if (!strcmp("-s", argv[i])) {
 			print_sincos_table(stdout);
@@ -535,11 +556,13 @@ int main(int argc, char **argv) {
 			return 0;
 		} else if (!strcmp("-t", argv[i])) {
 			if (internal_tests() < 0)
-				return -1;
+				return 1;
 			ran = true;
 		} else if (!strcmp("-i", argv[i])) {
-			qinfo_print(stdout, &qinfo);
-			qconf_print(stdout, &qconf);
+			if (qinfo_print(stdout, &qinfo) < 0)
+				return 1;
+			if (qconf_print(stdout, &qconf) < 0)
+				return 1;
 			ran = true;
 		} else {
 			FILE *input = fopen_or_die(argv[i], "rb");
@@ -548,7 +571,7 @@ int main(int argc, char **argv) {
 			ran = true;
 			fclose(input);
 			if (r < 0)
-				return -1;
+				return 1;
 		}
 	}
 	if (!ran)

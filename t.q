@@ -110,29 +110,29 @@ copysign   -2.3 +-  0.0 |  2.3 -999
 copysign   -2.3 +-  0.0 | -2.3 -2.3
 copysign    2.3 +-  0.0 |  2.3  4.1
 copysign    2.3 +-  0.0 | -2.3  3.0
-# 'c*' and 'c/' use CORDIC to do division and multiplication
+# '_mul' and '_div' use CORDIC to do division and multiplication
 # They only work over a limited range and need more work as
 # they do not give correct results for all sign combinations
-c*          0.0 +- 0.02 |  0.0 0.0
-c*          0.0 +- 0.02 |  1.0 0.0
-c*          0.0 +- 0.02 |  0.0 1.0
-c*          1.0 +- 0.02 |  1.0 1.0
-c*         2.25 +- 0.02 |  1.5  1.5
-c*        0.268 +- 0.02 |  0.67 0.4
-c*        4.0 +- 0.02 |  2.0 2.0
-c*        3.1 +- 0.02 |  1.76 1.76
-c*        3.1 +- 0.02 |  1.76 1.76
-c*       2.73 +- 0.02 |  2.1 1.3
-c/        1.0 +- 0.02 |  2.0 2.0
-c/        1.0 +- 0.02 |  4.0 4.0
-c/        2.0 +- 0.02 |  4.0 2.0
-c/        0.5 +- 0.02 |  0.5 1.0
-c/        2.0 +- 0.02 |  1.0 0.5
-c*       -4.0 +- 0.02 |  2.0 -2.0
-# c*        9.0 +- 0.02 |  3.0  3.0
-c*        4.0 +- 0.02 | -2.0 -2.0
-c*       -4.0 +- 0.02 | -2.0  2.0
-c*        4.0 +- 0.02 | -2.0 -2.0
+_mul      0.0 +- 0.02 |  0.0 0.0
+_mul      0.0 +- 0.02 |  1.0 0.0
+_mul      0.0 +- 0.02 |  0.0 1.0
+_mul      1.0 +- 0.02 |  1.0 1.0
+_mul      2.25 +- 0.02 |  1.5  1.5
+_mul      0.268 +- 0.02 |  0.67 0.4
+_mul      4.0 +- 0.02 |  2.0 2.0
+_mul      3.1 +- 0.02 |  1.76 1.76
+_mul      3.1 +- 0.02 |  1.76 1.76
+_mul      2.73 +- 0.02 |  2.1 1.3
+_div      1.0 +- 0.02 |  2.0 2.0
+_div      1.0 +- 0.02 |  4.0 4.0
+_div      2.0 +- 0.02 |  4.0 2.0
+_div      0.5 +- 0.02 |  0.5 1.0
+_div      2.0 +- 0.02 |  1.0 0.5
+_mul     -4.0 +- 0.02 |  2.0 -2.0
+# _mul    9.0 +- 0.02 |  3.0  3.0
+_mul      4.0 +- 0.02 | -2.0 -2.0
+_mul     -4.0 +- 0.02 | -2.0  2.0
+_mul      4.0 +- 0.02 | -2.0 -2.0
 # These Hyperbolic functions works for small values only
 sinh    1.175 +- 0.02 |  1.0
 sinh    0.521 +- 0.02 |  0.5
@@ -259,3 +259,24 @@ atan2   2.6779   +- 0.02 | 0.5 -1.
 base    16.0000   +- 0.02 | 16.00
 +     A.0000  +- 0.00 | 9.0 1.0 
 +     10.0000  +- 0.00 | 1.0 F.0 
+base A.0 +- 0.0 | A.0
+# Error in I/O (probably input) causes extra digits to
+# result in wildly incorrect number (2.71719 becomes
+# 2.0171). This doesn't have anything to do with the
+# operator, just the numeric I/O, this is to test that
+# this works.
++     2.7171   +- 0.00 | 2.71719 0.0
+asinh   0.8813 +- 0.002 | 1.
+asinh   0.0    +- 0.0   | 0.
+asinh   0.4812 +- 0.002 | 0.5
+asinh   -0.4812 +- 0.002 | -0.5
+#asinh   7.5999 +- 0.002 | 999
+acosh 1.3169 +- 0.002 | 2
+acosh 0.     +- 0.002 | 1
+acosh 0.9624 +- 0.002 | 1.5
+acosh 2.9932 +- 0.002 | 10
+acosh 5.2982 +- 0.002 | 100
+#acosh 7.6009 +- 0.002 | 1000
+atanh   0.  +- 0.00 | 0.
+atanh 0.5493 +- 0.00 | 0.5
+atanh -0.5493 +- 0.001 | -0.5

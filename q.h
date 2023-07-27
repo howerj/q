@@ -170,6 +170,7 @@ q_t qdiv(q_t a, q_t b);
 q_t qrem(q_t a, q_t b);
 q_t qmod(q_t a, q_t b);
 q_t qfma(q_t a, q_t b, q_t c);
+q_t qsqr(q_t x);
 q_t qexp(q_t e);
 q_t qlog(q_t n);
 q_t qsqrt(q_t x);
@@ -195,10 +196,12 @@ q_t qpow(q_t n, q_t exp);
 
 int qsprint(q_t p, char *s, size_t length);
 int qsprintb(q_t p, char *s, size_t length, u_t base);
+int qsprintbdp(q_t p, char *s, size_t length, u_t base, d_t idp);
 int qnconv(q_t *q, const char *s, size_t length);
 int qnconvb(q_t *q, const char *s, size_t length, d_t base);
 int qconv(q_t *q, const char *s);
 int qconvb(q_t *q, const char * const s, d_t base);
+int qnconvbdp(q_t *q, const char *s, size_t length, d_t base, u_t idp);
 
 void qsincos(q_t theta, q_t *sine, q_t *cosine);
 q_t qsin(q_t theta);
@@ -214,6 +217,11 @@ q_t qacos(q_t t);
 q_t qsinh(q_t a);
 q_t qcosh(q_t a);
 q_t qtanh(q_t a);
+
+q_t qatanh(q_t t);
+q_t qasinh(q_t t);
+q_t qacosh(q_t t);
+
 void qsincosh(q_t a, q_t *sinh, q_t *cosh);
 
 q_t qcordic_ln(q_t d);         /* CORDIC testing only */

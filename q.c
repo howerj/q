@@ -12,9 +12,15 @@
  * - Moving towards a header-only model.
  * - Removal of dependencies such as 'isalpha', 'tolower'
  *   as they are locale dependent.
- * - Make component optional. 
+ * - Make components optional (filters, expression parser, ...)
+ * - Make hyperbolic arc sin/cos/tan functions.
  * - Fix bugs / inaccuracies in CORDIC code.
- * - Generally improve accuracy of all the functions. */
+ * - Improve accuracy of all the functions and quantify error and
+ *   their limits. 
+ *
+ * BUG: Enter: 2.71791, get 2.0625, 2.7179 works fine. (Need to
+ * limit decimal places)
+ */
 
 #include "q.h"
 #include <assert.h>
@@ -29,14 +35,14 @@
 #define BOOLIFY(X)              (!!(X))
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 #define MULTIPLIER              (INT16_MAX)
-#define UMAX                    (UINT32_MAX)
 #define DMIN                    (INT32_MIN)
 #define DMAX                    (INT32_MAX)
-#define LUMAX                   (UINT64_MAX)
-#define LDMIN                   (INT64_MIN)
-#define LDMAX                   (INT64_MAX)
 #define MIN(X, Y)               ((X) < (Y) ? (X) : (Y))
 #define MAX(X, Y)               ((X) < (Y) ? (Y) : (X))
+
+#ifndef CONFIG_Q_HIDE_FUNCS /* 1 = hide hidden (testing) functions, 0 = enable them */
+#define CONFIG_Q_HIDE_FUNCS (0)
+#endif
 
 typedef  int16_t hd_t; /* half Q width,      signed */
 typedef uint64_t lu_t; /* double Q width,  unsigned */
@@ -62,7 +68,7 @@ const qinfo_t qinfo = {
 
 qconf_t qconf = { /* Global Configuration Options */
 	.bound = qbound_saturate,
-	.dp    = 5,
+	.dp    = 4,
 	.base  = 10,
 };
 
@@ -81,7 +87,7 @@ static inline void exclusive(const int x, const int y) {
 	assert(BOOLIFY(x) != BOOLIFY(y));
 }
 
-static void static_assertions(void) {
+static inline void static_assertions(void) {
 	BUILD_BUG_ON(CHAR_BIT != 8);
 	BUILD_BUG_ON((sizeof(q_t)*CHAR_BIT) != (QBITS * 2));
 	BUILD_BUG_ON( sizeof(q_t) !=  sizeof(u_t));
@@ -113,12 +119,12 @@ inline d_t arshift(const d_t v, const unsigned p) {
 	u_t vn = v;
 	if (v >= 0l)
 		return vn >> p;
-	const u_t leading = ((u_t)(-1l)) << ((sizeof(v)*CHAR_BIT) - p - 1);
+	const u_t leading = ((u_t)(-1l)) << ((sizeof(v) * CHAR_BIT) - p - 1);
 	return leading | (vn >> p);
 }
 
 inline d_t divn(const d_t v, const unsigned p) {
-	// return v / (1l << p);
+	/* return v / (1l << p); */
 	const u_t shifted = ((u_t)v) >> p;
 	if (qispositive(v))
 		return shifted;
@@ -323,19 +329,19 @@ static int uprint(u_t p, char *s, const size_t length, const d_t base) {
 }
 
 /* <https://codereview.stackexchange.com/questions/109212> */
-int qsprintb(q_t p, char *s, size_t length, const u_t base) {
+int qsprintbdp(q_t p, char *s, size_t length, const u_t base, const d_t idp) {
 	assert(s);
 	const int negative = BOOLIFY(qisnegative(p));
 	if (negative)
 		p = qnegate(p);
-	const d_t idp = qconf.dp, hi = qhigh(p);
-	char frac[QBITS+2] = { '.' };
+	const d_t hi = qhigh(p);
+	char frac[QBITS + 2] = { '.', };
 	memset(s, 0, length);
 	assert(base >= 2 && base <= 36);
 	u_t lo = qlow(p);
 	size_t i = 1;
 	for (i = 1; lo; i++) {
-		if (idp >= 0 && (int)i >= idp)
+		if (idp >= 0 && (int)i > idp)
 			break;
 		lo *= base;
 		assert(i < (QBITS + 2));
@@ -349,6 +355,10 @@ int qsprintb(q_t p, char *s, size_t length, const u_t base) {
 		return -1;
 	memcpy(s + hisz + negative, frac, i);
 	return i + hisz;
+}
+
+int qsprintb(q_t p, char *s, size_t length, const u_t base) {
+	return qsprintbdp(p, s, length, base, qconf.dp);
 }
 
 int qsprint(const q_t p, char *s, const size_t length) {
@@ -375,14 +385,20 @@ static inline q_t qmk(d_t integer, u_t fractional) {
 	return negative ? qnegate(r) : r;
 }
 
-int qnconvb(q_t *q, const char *s, size_t length, const d_t base) {
+static inline u_t integer_logarithm(u_t num, const u_t base) {
+	assert(num > 0 && base >= 2 && base <= 36);
+	u_t r = -1;
+	do r++; while (num /= base);
+	return r;
+}
+
+int qnconvbdp(q_t *q, const char *s, size_t length, const d_t base, const u_t idp) {
 	assert(q);
 	assert(s);
 	assert(base >= 2 && base <= 36);
 	*q = QINT(0);
 	if (length < 1)
 		return -1;
-	const d_t idp = qconf.dp;
 	d_t hi = 0, lo = 0, places = 1, negative = 0, overflow = 0;
 	size_t sidx = 0;
 
@@ -397,9 +413,11 @@ int qnconvb(q_t *q, const char *s, size_t length, const d_t base) {
 		const d_t e = extract(s[sidx], base);
 		if (e < 0)
 			break;
-		hi = (hi * base) + e;
-		if (hi > MULTIPLIER) /* continue on with conversion */
+		if (hi > MULTIPLIER) { /* continue on with conversion, do not accumulate */
 			overflow = 1;
+		} else { 
+			hi = (hi * base) + e;
+		}
 	}
 	if (sidx >= length || !s[sidx])
 		goto done;
@@ -407,28 +425,41 @@ int qnconvb(q_t *q, const char *s, size_t length, const d_t base) {
 		return -2;
 	sidx++;
 	
-	for (int dp = 0; sidx < length && s[sidx]; sidx++, dp++) {
+	const u_t ilog = integer_logarithm(0x10000, base);
+	const u_t max = MIN(idp, ilog); /* Calculate maximum decimal places given base */
+
+	for (u_t dp = 0; sidx < length && s[sidx]; sidx++, dp++) {
 		const int ch = extract(s[sidx], base);
 		if (ch < 0)
 			return -3;
-		if (dp <= idp) { /* continue on with conversion */
+		if (dp < max) { /* continue on with conversion , do not accumulate */
+			/* We could get more accuracy by looking at one digit
+			 * passed the maximum digits allowed and rounding if
+			 * that digit exists in the input. */
 			lo = (lo * base) + ch;
-			if (places > (DMAX/base))
+			if (places >= (DMAX / base))
 				return -4;
 			places *= base;
 		}
+		assert((dp + 1) > dp);
 	}
 	if (!places)
 		return -5;
 	lo = ((d_t)((u_t)lo << QBITS) / places);
 done:
-	{
+	if (overflow) {
+		*q = negative ? qinfo.min : qinfo.max;
+		return -6;
+	} else {
 		const q_t nq = qmk(hi, lo);
 		*q = negative ? qnegate(nq) : nq;
+
 	}
-	if (overflow)
-		return -6;
 	return 0;
+}
+
+int qnconvb(q_t *q, const char *s, size_t length, const d_t base) {
+	return qnconvbdp(q, s, length, base, qconf.dp);
 }
 
 int qnconv(q_t *q, const char *s, size_t length) {
@@ -445,7 +476,6 @@ int qconvb(q_t *q, const char * const s, const d_t base) {
 	return qnconvb(q, s, strlen(s), base);
 }
 
-
 typedef enum {
 	CORDIC_MODE_VECTOR_E/* = 'VECT'*/,
 	CORDIC_MODE_ROTATE_E/* = 'ROT'*/,
@@ -460,7 +490,7 @@ typedef enum {
 static const d_t cordic_circular_inverse_scaling   = 0x9B74; /* 1/scaling-factor */
 static const d_t cordic_hyperbolic_inverse_scaling = 0x13520; /* 1/scaling-factor */
 
-static int mulsign(d_t a, d_t b) { /* sign(a*b) */
+static inline int mulsign(d_t a, d_t b) { /* sign(a*b) */
 	const int aneg = a < 0;
 	const int bneg = b < 0;
 	return aneg ^ bneg ? -QINT(1) : QINT(1);
@@ -562,7 +592,7 @@ static int cordic(const cordic_coordinates_e coord, const cordic_mode_e mode, in
 	for (; j < (unsigned)iterations; i++, j++) {
 		again:
 		{
-			const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -mulsign(x, y);
+			const d_t  m = mode == CORDIC_MODE_ROTATE_E ? z : -y /*-mulsign(x, y)*/;
 			const d_t  d =   -!!(m < 0);
 			const d_t xs = ((((shiftx ? divn(y, *shiftx) : 0)) ^ d) - d);
 			const d_t ys =             (divn(x, *shifty)       ^ d) - d;
@@ -573,10 +603,23 @@ static int cordic(const cordic_coordinates_e coord, const cordic_mode_e mode, in
 			y = yn; /*   sine, in circular, rotation mode   */
 			z = zn;
 		}
-		if (hyperbolic) {
-			if (k++ >= 3) {
-				k = 0;
-				goto again;
+		if (hyperbolic) { /* Experimental/Needs bug fixing */
+			switch (1) { // TODO: Correct hyperbolic redo of iteration
+			case 0: break;
+			case 1: if (k++ >= 3) { k = 0; goto again; } break;
+			case 2: {
+				assert(j <= 120);
+				size_t cmp = j + 1;
+				if (cmp == 4 || cmp == 13 /*|| cmp == 40 || cmp == 121 || cmp == floor(pow(3,i-1)/2) */) {
+					if (k) {
+						k = 0;
+					} else {
+						k = 1;
+						goto again;
+					}
+				}
+				break;
+			}
 			}
 		}
 	}
@@ -723,7 +766,7 @@ q_t qcordic_div(const q_t a, const q_t b) {
 void qsincosh(const q_t a, q_t *sinh, q_t *cosh) {
 	assert(sinh);
 	assert(cosh);
-	q_t x = cordic_hyperbolic_inverse_scaling, y = QINT(0), z = a; // (e^2x - 1) / (e^2x + 1)
+	q_t x = cordic_hyperbolic_inverse_scaling, y = QINT(0), z = a; /* (e^2x - 1) / (e^2x + 1) */
 	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_ROTATE_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	*sinh = y;
@@ -756,10 +799,9 @@ q_t qcordic_exp(const q_t e) {
 
 q_t qcordic_ln(const q_t d) {
 	q_t x = qadd(d, QINT(1)), y = qsub(d, QINT(1)), z = QINT(0);
-	static const q_t two = QINT(2);
 	const int r = cordic(CORDIC_COORD_HYPERBOLIC_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
-	return qmul(z, two);
+	return qadd(z, z);
 }
 
 q_t qcordic_sqrt(const q_t n) {  /* testing only; works for 0 < x < 2 */
@@ -777,6 +819,20 @@ q_t qhypot(const q_t a, const q_t b) {
 	const int r = cordic(CORDIC_COORD_CIRCULAR_E, CORDIC_MODE_VECTOR_E, -1, &x, &y, &z);
 	assert(r >= 0);
 	return qmul(x, cordic_circular_inverse_scaling);
+}
+
+q_t qatanh(q_t x) {
+	assert(qabs(qless(x, QINT(1))));
+	return qmul(qlog(qdiv(qadd(QINT(1), x), qsub(QINT(1), x))), QMK(0, 0x8000, 16));
+}
+
+q_t qasinh(q_t x) {
+	return qlog(qadd(x, qsqrt(qadd(qmul(x, x), QINT(1)))));
+}
+
+q_t qacosh(q_t x) {
+	assert(qeqmore(x, QINT(1)));
+	return qlog(qadd(x, qsqrt(qsub(qmul(x, x), QINT(1)))));
 }
 
 void qpol2rec(const q_t magnitude, const q_t theta, q_t *i, q_t *j) {
@@ -853,11 +909,14 @@ q_t qlog(q_t x) {
 	return qadd(logs, qcordic_ln(x));
 }
 
+q_t qsqr(const q_t x) {
+	return qmul(x, x);
+}
+
 q_t qexp(const q_t e) { /* exp(e) = exp(e/2)*exp(e/2) */
-	if (qless(e, QINT(1)))
+	if (qless(e, QINT(1))) /* 1.1268 is approximately the limit for qcordic_exp */
 		return qcordic_exp(e);
-	const q_t ed2 = qexp(divn(e, 1));
-	return qmul(ed2, ed2);
+	return qsqr(qexp(divn(e, 1)));
 }
 
 q_t qpow(q_t n, q_t exp) {
@@ -1381,6 +1440,12 @@ static q_t qbase(q_t b) {
 	return b;
 }
 
+static q_t qplaces(q_t places) {
+	/* TODO: Bounds checks given base */
+	qconf.dp = qtoi(places);
+	return places;
+}
+
 static q_t check_div0(qexpr_t *e, q_t a, q_t b) {
 	assert(e);
 	UNUSED(a);
@@ -1399,7 +1464,14 @@ static q_t check_nlz(qexpr_t *e, q_t a) { // Not Less Zero
 static q_t check_nlez(qexpr_t *e, q_t a) { // Not Less Equal Zero
 	assert(e);
 	if (qeqless(a, QINT(0)))
-		return error(e, "negative argument");
+		return error(e, "negative or zero argument");
+	return QINT(0);
+}
+
+static q_t check_nlo(qexpr_t *e, q_t a) { // Not less than one
+	assert(e);
+	if (qless(a, QINT(1)))
+		return error(e, "out of range [1, INF]");
 	return QINT(0);
 }
 
@@ -1433,18 +1505,21 @@ const qoperations_t *qop(const char *op) {
 		{  ">=",        .eval.binary  =  qeqmore,      .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
 		{  ">>",        .eval.binary  =  qlrs,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  0,  },
 		{  "^",         .eval.binary  =  qxor,         .check.binary  =  NULL,        2,  2,  ASSOCIATE_LEFT,   0,  },
+		{  "_div",      .eval.binary  =  qcordic_div,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "_exp",      .eval.unary   =  qcordic_exp,  .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  1,  },
 		{  "_ln",       .eval.unary   =  qcordic_ln,   .check.unary   =  check_nlez,  5,  1,  ASSOCIATE_RIGHT,  1,  },
+		{  "_mul",      .eval.binary  =  qcordic_mul,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "_sqrt",     .eval.unary   =  qcordic_sqrt, .check.unary   =  check_nlz,   5,  1,  ASSOCIATE_RIGHT,  1,  },
 		{  "abs",       .eval.unary   =  qabs,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "acos",      .eval.unary   =  qacos,        .check.unary   =  check_alo,   5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "acosh",     .eval.unary   =  qacosh,       .check.unary   =  check_nlo,   5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "arshift",   .eval.binary  =  qars,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "asin",      .eval.unary   =  qasin,        .check.unary   =  check_alo,   5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "asinh",     .eval.unary   =  qasinh,       .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "atan",      .eval.unary   =  qatan,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "atan2",     .eval.binary  =  qatan2,       .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "atanh",     .eval.unary   =  qatanh,       .check.unary   =  check_alo,   5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "base",      .eval.unary   =  qbase,        .check.unary   =  NULL,        2,  1,  ASSOCIATE_RIGHT,  0,  },
-		{  "c*",        .eval.binary  =  qcordic_mul,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
-		{  "c/",        .eval.binary  =  qcordic_div,  .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "ceil",      .eval.unary   =  qceil,        .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "copysign",  .eval.binary  =  qcopysign,    .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
 		{  "cos",       .eval.unary   =  qcos,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
@@ -1454,7 +1529,7 @@ const qoperations_t *qop(const char *op) {
 		{  "even?",     .eval.unary   =  qiseven,      .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "exp",       .eval.unary   =  qexp,         .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "floor",     .eval.unary   =  qfloor,       .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
-		{  "hypot",     .eval.binary  =  qhypot,       .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  1,  },
+		{  "hypot",     .eval.binary  =  qhypot,       .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  0,  },
 		{  "int?",      .eval.unary   =  qisinteger,   .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "log",       .eval.unary   =  qlog,         .check.unary   =  check_nlez,  5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "lshift",    .eval.binary  =  qlls,         .check.binary  =  NULL,        4,  2,  ASSOCIATE_RIGHT,  1,  },
@@ -1464,6 +1539,7 @@ const qoperations_t *qop(const char *op) {
 		{  "neg?",      .eval.unary   =  qisnegative,  .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "negate",    .eval.unary   =  qnegate,      .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "odd?",      .eval.unary   =  qisodd,       .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
+		{  "places",    .eval.unary   =  qplaces,      .check.unary   =  NULL,        2,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "pos?",      .eval.unary   =  qispositive,  .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
 		{  "pow",       .eval.binary  =  qpow,         .check.binary  =  NULL,        5,  2,  ASSOCIATE_RIGHT,  0,  },
 		{  "rad2deg",   .eval.unary   =  qrad2deg,     .check.unary   =  NULL,        5,  1,  ASSOCIATE_RIGHT,  0,  },
@@ -1721,7 +1797,7 @@ int qexpr(qexpr_t *e, const char *expr) {
 			break;
 		case LEX_OPERATOR: {
 			const qoperations_t *op = e->op;
-			if (op->hidden) {
+			if (CONFIG_Q_HIDE_FUNCS && op->hidden) {
 				error(e, "unknown operator \"%s\"", op->name);
 				goto end;
 			}
@@ -1758,4 +1834,6 @@ int qexpr(qexpr_t *e, const char *expr) {
 end:
 	return e->error == 0 ? 0 : -1;
 }
+
+
 

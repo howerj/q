@@ -180,6 +180,26 @@ end:
 	return report;
 }
 
+static qexpr_t *expr_new_with_vars(size_t max) {
+	qexpr_t *e = expr_new(max);
+	if (!e) return NULL;
+	if (!variable_add(e, "whole", qinfo.whole)) goto fail;
+	if (!variable_add(e, "fractional", qinfo.fractional)) goto fail;
+	if (!variable_add(e, "bit", qinfo.bit)) goto fail;
+	if (!variable_add(e, "smallest", qinfo.min)) goto fail;
+	if (!variable_add(e, "biggest", qinfo.max)) goto fail;
+	if (!variable_add(e, "pi", qinfo.pi)) goto fail;
+	if (!variable_add(e, "e", qinfo.e)) goto fail;
+	if (!variable_add(e, "sqrt2", qinfo.sqrt2)) goto fail;
+	if (!variable_add(e, "sqrt3", qinfo.sqrt3)) goto fail;
+	if (!variable_add(e, "ln2", qinfo.ln2)) goto fail;
+	if (!variable_add(e, "ln10", qinfo.ln10)) goto fail;
+	return e;
+fail:
+	expr_delete(e);
+	return NULL;
+}
+
 static int usage(FILE *out, const char *arg0) {
 	assert(out);
 	assert(arg0);
@@ -187,42 +207,39 @@ static int usage(FILE *out, const char *arg0) {
 }
 
 int main(int argc, char *argv[]) {
-	int r = 0;
-	qexpr_t *e = expr_new(0);
-
-	if (!e) {
-		(void)fprintf(stderr, "allocate failed\n");
-		r = 1;
-		goto end;
-	}
 
 	if (argc == 1) {
-		if (usage(stderr, argv[0]) < 0) {
-			r = 1;
-			goto end;
-		}
+		if (usage(stderr, argv[0]) < 0) { return 1; }
 		return tests(stderr);
 	}
 
 	if (argc < 2) {
 		(void)fprintf(stderr, "usage: %s expr\n", argv[0]);
-		r = 1;
-		goto end;
+		return 1;
 	}
 
-	if (qexpr(e, argv[1]) == 0) {
-		char n[64] = { 0 };
-		qsprint(e->numbers[0], n, sizeof n);
-		if (printf("%s\n", n) < 0)
+	int r = 0;
+
+	for (int i = 1; i < argc; i++) {
+		qexpr_t *e = expr_new_with_vars(0);
+		if (!e) {
+			(void)fprintf(stderr, "allocate failed\n");
 			r = 1;
-		r = 0;
-		goto end;
-	} else {
-		(void)fprintf(stderr, "error: %s\n", e->error_string);
-		r = 1;
+			break;
+		}
+		if (qexpr(e, argv[i]) == 0) {
+			char n[64 + 1] = { 0, };
+			qsprint(e->numbers[0], n, sizeof n);
+			if (printf("%s\n", n) < 0)
+				r = 1;
+			r = 0;
+		} else {
+			(void)fprintf(stderr, "error: %s\n", e->error_string);
+			r = 1;
+		}
+		expr_delete(e);
 	}
-end:
-	expr_delete(e);
 	return r;
 }
+
 
