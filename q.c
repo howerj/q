@@ -19,7 +19,7 @@
  *   their limits. 
  *
  * BUG: Enter: 2.71791, get 2.0625, 2.7179 works fine. (Need to
- * limit decimal places)
+ * limit decimal places).
  */
 
 #include "q.h"

@@ -577,14 +577,5 @@ int main(int argc, char **argv) {
 	if (!ran)
 		return eval_file(stdin, stdout);
 	return 0;
-
-	/*
-	qconf.bound = qbound_wrap;
-	test_duo(out, "+", qinfo.max, qinfo.one);
-	test_duo(out, "+", qinfo.max, qinfo.max);
-	test_duo(out, "-", qinfo.min, qinfo.one);
-	qconf.bound = qbound_saturate;
-	
-	return 0;*/
 }
 

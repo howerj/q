@@ -27,13 +27,13 @@ be some kind of Maverick who doesn't play by no rules however.
 The trigonometric functions, and some others, are implemented internally with
 [CORDIC][].
 
-Of note, all operators are bounded by minimum and maximum values, which are not
-shown in the following table, by default all arithmetic is saturating. The
+Of note, all operators are bounded by minimum and maximum values which are not
+shown in the following table and by default all arithmetic is saturating. The
 effective input range of a number might lower than what is possible given a
 mathematical functions definition - either because of the limited range of the
 [Q16.16][] type, or because the implementation of a function introduces too
 much error along some part of its' input range. Caveat Emptor (although you're
-not exactly paying for this library now, are you? Caveat Auditor perhaps).
+not exactly paying for this library now, are you? Caveat lector perhaps).
 
 ( This table needs completing, specifically the input ranges... )
 
