@@ -123,7 +123,7 @@ inline d_t arshift(const d_t v, const unsigned p) {
 	return leading | (vn >> p);
 }
 
-inline d_t divn(const d_t v, const unsigned p) {
+static inline d_t divn(const d_t v, const unsigned p) {
 	/* return v / (1l << p); */
 	const u_t shifted = ((u_t)v) >> p;
 	if (qispositive(v))
