@@ -1,5 +1,5 @@
 QVERSION=0x000902
-CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic -fwrapv -DQVERSION=${QVERSION}
+CFLAGS=-std=c99 -Wall -Wextra -O2 -pedantic -fwrapv -DQVERSION=${QVERSION} -Wmissing-prototypes
 CC=gcc
 TARGET=q
 RM=rm -fv

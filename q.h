@@ -290,6 +290,7 @@ int qmatrix_signum(q_t *r, const q_t *a);
 int qmatrix_invert(q_t *r, const q_t *a);
 
 int qmatrix_is_valid(const q_t *m);
+int qmatrix_is_square(const q_t *m);
 
 int qmatrix_transpose(q_t * RESTRICT r, const q_t * RESTRICT m);
 int qmatrix_add(q_t * RESTRICT r, const q_t *a, const q_t *b);
