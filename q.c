@@ -434,7 +434,7 @@ int qnconvbdp(q_t *q, const char *s, size_t length, const d_t base, const u_t id
 			return -3;
 		if (dp < max) { /* continue on with conversion , do not accumulate */
 			/* We could get more accuracy by looking at one digit
-			 * passed the maximum digits allowed and rounding if
+			 * past the maximum digits allowed and rounding if
 			 * that digit exists in the input. */
 			lo = (lo * base) + ch;
 			if (places >= (DMAX / base))
